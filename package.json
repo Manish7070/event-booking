@@ -1,0 +1,30 @@
+{
+    "name":  "eventra-monorepo",
+    "version":  "1.0.0",
+    "private":  true,
+    "scripts":  {
+                    "dev":  "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+                    "dev:client":  "npm run dev --prefix client",
+                    "dev:server":  "npm run dev --prefix server",
+                    "build":  "npm run build:server \u0026\u0026 npm run build:client",
+                    "build:client":  "npm run build --prefix client",
+                    "build:server":  "npm run build --prefix server",
+                    "typecheck":  "npm run typecheck --prefix server \u0026\u0026 npm run typecheck --prefix client",
+                    "lint":  "npm run lint --prefix server \u0026\u0026 npm run lint --prefix client",
+                    "db:seed":  "npm run db:seed --prefix server",
+                    "test":  "npm run test --workspace server"
+                },
+    "devDependencies":  {
+                            "concurrently":  "^9.1.2",
+                            "eslint":  "^9.39.0",
+                            "@eslint/js":  "^9.39.0",
+                            "typescript-eslint":  "^8.46.0"
+                        },
+    "workspaces":  [
+                       "client",
+                       "server"
+                   ],
+    "engines":  {
+                    "node":  "\u003e=22"
+                }
+}
