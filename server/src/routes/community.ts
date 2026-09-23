@@ -1,36 +1,243 @@
-import { Router } from 'express';
-import { z } from 'zod';
-import mongoose from 'mongoose';
-import { requireAuth, requireOrganizer } from '../middleware/session.js';
-import { asyncRoute as run, ok, HttpError, id, text, email, pagination, pageInfo } from '../utils/http.js';
-import { Wishlist } from '../models/Wishlist.js';
-import { Event } from '../models/Event.js';
-import { Ticket } from '../models/Ticket.js';
-import { Review } from '../models/Review.js';
-import { Notification } from '../models/Notification.js';
-import { NewsletterSubscriber } from '../models/NewsletterSubscriber.js';
-import { Coupon } from '../models/Coupon.js';
-import { couponSchema } from '../validators/schemas.js';
-import { notify } from '../services/notifications.js';
+import { Router } from "express";
+import { z } from "zod";
+import mongoose from "mongoose";
+import { requireAuth, requireOrganizer } from "../middleware/session.js";
+import {
+  asyncRoute as run,
+  ok,
+  HttpError,
+  id,
+  text,
+  email,
+  pagination,
+  pageInfo,
+} from "../utils/http.js";
+import { Wishlist } from "../models/Wishlist.js";
+import { Event } from "../models/Event.js";
+import { Ticket } from "../models/Ticket.js";
+import { Review } from "../models/Review.js";
+import { Notification } from "../models/Notification.js";
+import { NewsletterSubscriber } from "../models/NewsletterSubscriber.js";
+import { Coupon } from "../models/Coupon.js";
+import { couponSchema } from "../validators/schemas.js";
+import { notify } from "../services/notifications.js";
 export const community = Router();
-community.post('/newsletter/subscribe', run(async (req, res) => { const input = z.object({ email }).parse(req.body); await NewsletterSubscriber.updateOne(input, { $set: { isActive: true } }, { upsert: true }); ok(res, {}, 'You are subscribed to Eventra updates'); }));
-community.get('/reviews/event/:eventId', run(async (req, res) => { const { page, limit } = pagination(req); const filter = { event: id.parse(req.params.eventId), isVerified: true }; const [reviews, total] = await Promise.all([Review.find(filter).populate('user', 'name avatar').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Review.countDocuments(filter)]); ok(res, { reviews, pagination: pageInfo(total, page, limit) }); }));
+community.post(
+  "/newsletter/subscribe",
+  run(async (req, res) => {
+    const input = z.object({ email }).parse(req.body);
+    await NewsletterSubscriber.updateOne(
+      input,
+      { $set: { isActive: true } },
+      { upsert: true },
+    );
+    ok(res, {}, "You are subscribed to Eventra updates");
+  }),
+);
+community.get(
+  "/reviews/event/:eventId",
+  run(async (req, res) => {
+    const { page, limit } = pagination(req);
+    const filter = { event: id.parse(req.params.eventId), isVerified: true };
+    const [reviews, total] = await Promise.all([
+      Review.find(filter)
+        .populate("user", "name avatar")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Review.countDocuments(filter),
+    ]);
+    ok(res, { reviews, pagination: pageInfo(total, page, limit) });
+  }),
+);
 community.use(requireAuth);
-community.get('/wishlist', run(async (req, res) => { const { page, limit } = pagination(req); const [items, total] = await Promise.all([Wishlist.find({ user: req.user!._id }).populate({ path: 'event', match: { status: { $in: ['PUBLISHED', 'SOLD_OUT'] } }, populate: [{ path: 'category' }, { path: 'venue' }] }).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Wishlist.countDocuments({ user: req.user!._id })]); ok(res, { wishlist: items.map(i => i.event).filter(Boolean), pagination: pageInfo(total, page, limit) }); }));
-community.post('/wishlist/toggle', run(async (req, res) => { const { eventId } = z.object({ eventId: id }).parse(req.body); if (!await Event.exists({ _id: eventId, status: { $in: ['PUBLISHED', 'SOLD_OUT'] } })) throw new HttpError(404, 'Event not found'); const removed = await Wishlist.findOneAndDelete({ user: req.user!._id, event: eventId }); if (!removed) await Wishlist.updateOne({ user: req.user!._id, event: eventId }, { $setOnInsert: { user: req.user!._id, event: eventId } }, { upsert: true }); ok(res, { saved: !removed }); }));
-community.get('/notifications', run(async (req, res) => { const { page, limit } = pagination(req); const filter = { user: req.user!._id }; const [notifications, total, unreadCount] = await Promise.all([Notification.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Notification.countDocuments(filter), Notification.countDocuments({ ...filter, read: false })]); ok(res, { notifications, unreadCount, pagination: pageInfo(total, page, limit) }); }));
-community.put('/notifications/:id/read', run(async (req, res) => { const filter: any = { user: req.user!._id }; if (req.params.id !== 'all') filter._id = id.parse(req.params.id); await Notification.updateMany(filter, { read: true }); ok(res, {}, 'Notifications marked as read'); }));
-community.get('/reviews', run(async (req, res) => { const { page, limit } = pagination(req); const filter = { user: req.user!._id }; const [reviews, total] = await Promise.all([Review.find(filter).populate('event', 'title slug').sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Review.countDocuments(filter)]); ok(res, { reviews, pagination: pageInfo(total, page, limit) }); }));
-community.post('/reviews', run(async (req, res) => {
-  const input = z.object({ eventId: id, rating: z.number().int().min(1).max(5), title: text.max(120), content: text.max(5000) }).parse(req.body);
-  const session = await mongoose.startSession();
-  try { await session.withTransaction(async () => {
-    const ticket = await Ticket.findOne({ event: input.eventId, user: req.user!._id, status: 'USED' }).session(session); if (!ticket) throw new HttpError(403, 'Only checked-in attendees can review this event');
-    await Review.create([{ ...input, event: input.eventId, user: req.user!._id, booking: ticket.booking, isVerified: true }], { session });
-    const reviews = await Review.find({ event: input.eventId, isVerified: true }).session(session);
-    const event = await Event.findByIdAndUpdate(input.eventId, { rating: reviews.reduce((s, r) => s + r.rating, 0) / reviews.length, reviewCount: reviews.length }, { session });
-    if (event) await notify(event.organizer, 'REVIEW', 'New attendee review', `${req.user!.name} reviewed ${event.title}`, `review:${ticket.event}:${req.user!._id}`, session);
-  }); } finally { await session.endSession(); } ok(res, {}, 'Review published', 201);
-}));
-community.post('/coupons', requireOrganizer, run(async (req, res) => { const input = couponSchema.parse(req.body); if (input.event && req.user!.role !== 'ADMIN' && !await Event.exists({ _id: input.event, organizer: req.user!._id })) throw new HttpError(403, 'Event ownership required'); const coupon = await Coupon.create({ ...input, organizer: req.user!.role === 'ADMIN' ? undefined : req.user!._id }); ok(res, { coupon }, 'Coupon created', 201); }));
-community.put('/coupons/:id', requireOrganizer, run(async (req, res) => { const { isActive } = z.object({ isActive: z.boolean() }).parse(req.body); const coupon = await Coupon.findOneAndUpdate({ _id: id.parse(req.params.id), ...(req.user!.role === 'ADMIN' ? {} : { organizer: req.user!._id }) }, { isActive }, { new: true }); if (!coupon) throw new HttpError(404, 'Coupon not found'); ok(res, { coupon }); }));
+community.get(
+  "/wishlist",
+  run(async (req, res) => {
+    const { page, limit } = pagination(req);
+    const [items, total] = await Promise.all([
+      Wishlist.find({ user: req.user!._id })
+        .populate({
+          path: "event",
+          match: { status: { $in: ["PUBLISHED", "SOLD_OUT"] } },
+          populate: [{ path: "category" }, { path: "venue" }],
+        })
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Wishlist.countDocuments({ user: req.user!._id }),
+    ]);
+    ok(res, {
+      wishlist: items.map((i) => i.event).filter(Boolean),
+      pagination: pageInfo(total, page, limit),
+    });
+  }),
+);
+community.post(
+  "/wishlist/toggle",
+  run(async (req, res) => {
+    const { eventId } = z.object({ eventId: id }).parse(req.body);
+    if (
+      !(await Event.exists({
+        _id: eventId,
+        status: { $in: ["PUBLISHED", "SOLD_OUT"] },
+      }))
+    )
+      throw new HttpError(404, "Event not found");
+    const removed = await Wishlist.findOneAndDelete({
+      user: req.user!._id,
+      event: eventId,
+    });
+    if (!removed)
+      await Wishlist.updateOne(
+        { user: req.user!._id, event: eventId },
+        { $setOnInsert: { user: req.user!._id, event: eventId } },
+        { upsert: true },
+      );
+    ok(res, { saved: !removed });
+  }),
+);
+community.get(
+  "/notifications",
+  run(async (req, res) => {
+    const { page, limit } = pagination(req);
+    const filter = { user: req.user!._id };
+    const [notifications, total, unreadCount] = await Promise.all([
+      Notification.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Notification.countDocuments(filter),
+      Notification.countDocuments({ ...filter, read: false }),
+    ]);
+    ok(res, {
+      notifications,
+      unreadCount,
+      pagination: pageInfo(total, page, limit),
+    });
+  }),
+);
+community.put(
+  "/notifications/:id/read",
+  run(async (req, res) => {
+    const filter: any = { user: req.user!._id };
+    if (req.params.id !== "all") filter._id = id.parse(req.params.id);
+    await Notification.updateMany(filter, { read: true });
+    ok(res, {}, "Notifications marked as read");
+  }),
+);
+community.get(
+  "/reviews",
+  run(async (req, res) => {
+    const { page, limit } = pagination(req);
+    const filter = { user: req.user!._id };
+    const [reviews, total] = await Promise.all([
+      Review.find(filter)
+        .populate("event", "title slug")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      Review.countDocuments(filter),
+    ]);
+    ok(res, { reviews, pagination: pageInfo(total, page, limit) });
+  }),
+);
+community.post(
+  "/reviews",
+  run(async (req, res) => {
+    const input = z
+      .object({
+        eventId: id,
+        rating: z.number().int().min(1).max(5),
+        title: text.max(120),
+        content: text.max(5000),
+      })
+      .parse(req.body);
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const ticket = await Ticket.findOne({
+          event: input.eventId,
+          user: req.user!._id,
+          status: "USED",
+        }).session(session);
+        if (!ticket)
+          throw new HttpError(
+            403,
+            "Only checked-in attendees can review this event",
+          );
+        await Review.create(
+          [
+            {
+              ...input,
+              event: input.eventId,
+              user: req.user!._id,
+              booking: ticket.booking,
+              isVerified: true,
+            },
+          ],
+          { session },
+        );
+        const reviews = await Review.find({
+          event: input.eventId,
+          isVerified: true,
+        }).session(session);
+        const event = await Event.findByIdAndUpdate(
+          input.eventId,
+          {
+            rating: reviews.reduce((s, r) => s + r.rating, 0) / reviews.length,
+            reviewCount: reviews.length,
+          },
+          { session },
+        );
+        if (event)
+          await notify(
+            event.organizer,
+            "REVIEW",
+            "New attendee review",
+            `${req.user!.name} reviewed ${event.title}`,
+            `review:${ticket.event}:${req.user!._id}`,
+            session,
+          );
+      });
+    } finally {
+      await session.endSession();
+    }
+    ok(res, {}, "Review published", 201);
+  }),
+);
+community.post(
+  "/coupons",
+  requireOrganizer,
+  run(async (req, res) => {
+    const input = couponSchema.parse(req.body);
+    if (
+      input.event &&
+      req.user!.role !== "ADMIN" &&
+      !(await Event.exists({ _id: input.event, organizer: req.user!._id }))
+    )
+      throw new HttpError(403, "Event ownership required");
+    const coupon = await Coupon.create({
+      ...input,
+      organizer: req.user!.role === "ADMIN" ? undefined : req.user!._id,
+    });
+    ok(res, { coupon }, "Coupon created", 201);
+  }),
+);
+community.put(
+  "/coupons/:id",
+  requireOrganizer,
+  run(async (req, res) => {
+    const { isActive } = z.object({ isActive: z.boolean() }).parse(req.body);
+    const coupon = await Coupon.findOneAndUpdate(
+      {
+        _id: id.parse(req.params.id),
+        ...(req.user!.role === "ADMIN" ? {} : { organizer: req.user!._id }),
+      },
+      { isActive },
+      { new: true },
+    );
+    if (!coupon) throw new HttpError(404, "Coupon not found");
+    ok(res, { coupon });
+  }),
+);

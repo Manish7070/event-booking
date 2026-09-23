@@ -1,11 +1,184 @@
-import { z } from 'zod';
-import { id, text, email } from '../utils/http.js';
-export const password = z.string().min(10).max(72).regex(/[a-z]/, 'Include a lowercase letter').regex(/[A-Z]/, 'Include an uppercase letter').regex(/[0-9]/, 'Include a number');
-export const registerSchema = z.object({ name: text.max(100), email, password, phone: z.string().trim().max(30).default(''), role: z.enum(['USER', 'ORGANIZER']).default('USER'), organizationName: text.max(150).optional() }).refine(v => v.role !== 'ORGANIZER' || !!v.organizationName, { message: 'Organization name is required', path: ['organizationName'] });
-export const profileSchema = z.object({ name: text.max(100), phone: z.string().max(30).default(''), avatar: z.string().url().or(z.literal('')).optional(), preferences: z.object({ notifications: z.boolean(), newsletter: z.boolean(), favoriteCategories: z.array(id).max(20).optional() }).optional() });
-export const ticketSchema = z.object({ _id: id.optional(), name: text.max(100), description: z.string().max(1000).default(''), price: z.coerce.number().finite().min(0).max(1000000).refine(v => Math.abs(v * 100 - Math.round(v * 100)) < 0.00001, 'Use at most two decimal places'), totalQuantity: z.coerce.number().int().min(1).max(100000), maxPerBooking: z.coerce.number().int().min(1).max(20).default(6), saleStartDate: z.coerce.date().optional(), saleEndDate: z.coerce.date().optional(), benefits: z.array(text).max(20).default([]) });
-export const eventSchema = z.object({ title: text.max(180), shortDescription: text.max(300), description: z.string().trim().min(20).max(30000), category: id, venue: id, coverImage: z.string().url(), images: z.array(z.string().url()).max(12).default([]), startDate: z.coerce.date(), endDate: z.coerce.date(), timezone: z.string().default('Asia/Kolkata').refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }, 'Invalid timezone'), tags: z.array(text.max(50)).max(20).default([]), highlights: z.array(text).max(20).default([]), accessibility: z.array(text).max(20).default([]), schedule: z.array(z.object({ time: text, title: text, description: z.string().max(1000).default('') })).max(50).default([]), faq: z.array(z.object({ question: text, answer: text })).max(20).default([]), ageRestriction: text.default('All Ages'), dressCode: text.default('No dress code'), termsAndConditions: text.default('Present a valid ticket at entry.'), cancellationPolicy: text.default('Refund requests are accepted until 24 hours before the event.'), visibility: z.enum(['PUBLIC', 'UNLISTED']).default('PUBLIC'), eventType: z.enum(['IN_PERSON', 'ONLINE', 'HYBRID']).default('IN_PERSON'), tickets: z.array(ticketSchema).min(1).max(12), status: z.enum(['DRAFT', 'PENDING_REVIEW']).default('DRAFT') }).refine(v => v.endDate > v.startDate, { path: ['endDate'], message: 'End must follow start' });
-export const cartSchema = z.object({ eventId: id, items: z.array(z.object({ ticketTypeId: id, quantity: z.number().int().min(1).max(20) })).min(1).max(12), couponCode: z.string().trim().max(40).optional() }).refine(v => new Set(v.items.map(i => i.ticketTypeId)).size === v.items.length, 'Duplicate ticket types are not allowed');
-export const checkoutSchema = cartSchema.and(z.object({ attendeeName: text.max(100), attendeeEmail: email, attendeePhone: z.string().trim().min(6).max(30), idempotencyKey: z.string().uuid() }));
-export const couponSchema = z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{3,40}$/), name: text.max(120), description: z.string().max(1000).default(''), discountType: z.enum(['PERCENTAGE', 'FIXED']), discountValue: z.coerce.number().positive().max(100000), minimumOrder: z.coerce.number().min(0).default(0), maximumDiscount: z.coerce.number().positive().optional(), startsAt: z.coerce.date().optional(), expiryDate: z.coerce.date(), event: id.optional(), usageLimit: z.coerce.number().int().positive().default(100), perUserLimit: z.coerce.number().int().positive().default(1), isActive: z.boolean().default(true) }).refine(v => v.discountType !== 'PERCENTAGE' || v.discountValue <= 100, { message: 'Percentage cannot exceed 100', path: ['discountValue'] }).refine(v => !v.startsAt || v.expiryDate > v.startsAt, 'Expiry must follow start');
-export const venueSchema = z.object({ name: text.max(180), description: z.string().max(5000).default(''), address: text, city: text.max(100), state: text.max(100), country: text.default('India'), capacity: z.coerce.number().int().positive().max(1000000), image: z.string().url(), amenities: z.array(text).max(30).default([]), latitude: z.coerce.number().min(-90).max(90).default(0), longitude: z.coerce.number().min(-180).max(180).default(0), contactEmail: email.or(z.literal('')).default(''), contactPhone: z.string().max(30).default('') });
+import { z } from "zod";
+import { id, text, email } from "../utils/http.js";
+export const password = z
+  .string()
+  .min(10)
+  .max(72)
+  .regex(/[a-z]/, "Include a lowercase letter")
+  .regex(/[A-Z]/, "Include an uppercase letter")
+  .regex(/[0-9]/, "Include a number");
+export const registerSchema = z
+  .object({
+    name: text.max(100),
+    email,
+    password,
+    phone: z.string().trim().max(30).default(""),
+    role: z.enum(["USER", "ORGANIZER"]).default("USER"),
+    organizationName: text.max(150).optional(),
+  })
+  .refine((v) => v.role !== "ORGANIZER" || !!v.organizationName, {
+    message: "Organization name is required",
+    path: ["organizationName"],
+  });
+export const profileSchema = z.object({
+  name: text.max(100),
+  phone: z.string().max(30).default(""),
+  avatar: z.string().url().or(z.literal("")).optional(),
+  preferences: z
+    .object({
+      notifications: z.boolean(),
+      newsletter: z.boolean(),
+      favoriteCategories: z.array(id).max(20).optional(),
+    })
+    .optional(),
+});
+const coverImage = z.union([
+  z.string().url(),
+  z.enum([
+    "/images/editorial-night.svg",
+    "/images/editorial-space.svg",
+    "/images/editorial-play.svg",
+  ]),
+]);
+export const ticketSchema = z.object({
+  _id: id.optional(),
+  name: text.max(100),
+  description: z.string().max(1000).default(""),
+  price: z.coerce
+    .number()
+    .finite()
+    .min(0)
+    .max(1000000)
+    .refine(
+      (v) => Math.abs(v * 100 - Math.round(v * 100)) < 0.00001,
+      "Use at most two decimal places",
+    ),
+  totalQuantity: z.coerce.number().int().min(1).max(100000),
+  maxPerBooking: z.coerce.number().int().min(1).max(20).default(6),
+  saleStartDate: z.coerce.date().optional(),
+  saleEndDate: z.coerce.date().optional(),
+  benefits: z.array(text).max(20).default([]),
+});
+export const eventSchema = z
+  .object({
+    title: text.max(180),
+    shortDescription: text.max(300),
+    description: z.string().trim().min(20).max(30000),
+    category: id,
+    venue: id,
+    coverImage,
+    images: z.array(z.string().url()).max(12).default([]),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date(),
+    timezone: z
+      .string()
+      .default("Asia/Kolkata")
+      .refine((v) => {
+        try {
+          new Intl.DateTimeFormat("en", { timeZone: v });
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Invalid timezone"),
+    tags: z.array(text.max(50)).max(20).default([]),
+    highlights: z.array(text).max(20).default([]),
+    accessibility: z.array(text).max(20).default([]),
+    schedule: z
+      .array(
+        z.object({
+          time: text,
+          title: text,
+          description: z.string().max(1000).default(""),
+        }),
+      )
+      .max(50)
+      .default([]),
+    faq: z
+      .array(z.object({ question: text, answer: text }))
+      .max(20)
+      .default([]),
+    ageRestriction: text.default("All Ages"),
+    dressCode: text.default("No dress code"),
+    termsAndConditions: text.default("Present a valid ticket at entry."),
+    cancellationPolicy: text.default(
+      "Refund requests are accepted until 24 hours before the event.",
+    ),
+    visibility: z.enum(["PUBLIC", "UNLISTED"]).default("PUBLIC"),
+    eventType: z.enum(["IN_PERSON", "ONLINE", "HYBRID"]).default("IN_PERSON"),
+    tickets: z.array(ticketSchema).min(1).max(12),
+    status: z.enum(["DRAFT", "PENDING_REVIEW"]).default("DRAFT"),
+  })
+  .refine((v) => v.endDate > v.startDate, {
+    path: ["endDate"],
+    message: "End must follow start",
+  });
+export const cartSchema = z
+  .object({
+    eventId: id,
+    items: z
+      .array(
+        z.object({
+          ticketTypeId: id,
+          quantity: z.number().int().min(1).max(20),
+        }),
+      )
+      .min(1)
+      .max(12),
+    couponCode: z.string().trim().max(40).optional(),
+  })
+  .refine(
+    (v) => new Set(v.items.map((i) => i.ticketTypeId)).size === v.items.length,
+    "Duplicate ticket types are not allowed",
+  );
+export const checkoutSchema = cartSchema.and(
+  z.object({
+    attendeeName: text.max(100),
+    attendeeEmail: email,
+    attendeePhone: z.string().trim().min(6).max(30),
+    idempotencyKey: z.string().uuid(),
+  }),
+);
+export const couponSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z0-9_-]{3,40}$/),
+    name: text.max(120),
+    description: z.string().max(1000).default(""),
+    discountType: z.enum(["PERCENTAGE", "FIXED"]),
+    discountValue: z.coerce.number().positive().max(100000),
+    minimumOrder: z.coerce.number().min(0).default(0),
+    maximumDiscount: z.coerce.number().positive().optional(),
+    startsAt: z.coerce.date().optional(),
+    expiryDate: z.coerce.date(),
+    event: id.optional(),
+    usageLimit: z.coerce.number().int().positive().default(100),
+    perUserLimit: z.coerce.number().int().positive().default(1),
+    isActive: z.boolean().default(true),
+  })
+  .refine((v) => v.discountType !== "PERCENTAGE" || v.discountValue <= 100, {
+    message: "Percentage cannot exceed 100",
+    path: ["discountValue"],
+  })
+  .refine(
+    (v) => !v.startsAt || v.expiryDate > v.startsAt,
+    "Expiry must follow start",
+  );
+export const venueSchema = z.object({
+  name: text.max(180),
+  description: z.string().max(5000).default(""),
+  address: text,
+  city: text.max(100),
+  state: text.max(100),
+  country: text.default("India"),
+  capacity: z.coerce.number().int().positive().max(1000000),
+  image: z.string().url(),
+  amenities: z.array(text).max(30).default([]),
+  latitude: z.coerce.number().min(-90).max(90).default(0),
+  longitude: z.coerce.number().min(-180).max(180).default(0),
+  contactEmail: email.or(z.literal("")).default(""),
+  contactPhone: z.string().max(30).default(""),
+});

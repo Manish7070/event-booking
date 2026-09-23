@@ -1,24 +1,11 @@
-{
-  "version": 2,
-  "builds": [
+﻿{
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "client/dist",
+  "rewrites": [
     {
-      "src": "client/package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
-    },
-    {
-      "src": "server/src/server.ts",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "server/src/server.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "client/$1"
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
     }
   ]
 }

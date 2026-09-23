@@ -1,16 +1,590 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
-import { useData } from '../hooks/useData.js';
-import { api } from '../api/axios.js';
-import { queryClient } from '../api/queryClient.js';
-import { useAuthStore } from '../store/useAuthStore.js';
-import { Badge, Button, Empty, Field, Modal, Notice, PageTitle, Pagination, Skeleton, Table, date, money, message } from '../components/ui.js';
-import { MarketCard } from './Marketplace.js';
-export function CustomerOverview() { const tickets=useData('/tickets',{limit:5});const orders=useData('/orders',{limit:5});const wishlist=useData('/wishlist',{limit:1});return <><PageTitle eyebrow="Your Eventra" title="Good plans start here." action={<Link className="btn primary" to="/events">Discover events ↗</Link>}/><div className="stats-grid">{[['Your tickets',tickets.data?.pagination?.total],['Orders',orders.data?.pagination?.total],['Saved events',wishlist.data?.pagination?.total]].map(([label,value])=><div className="stat" key={label}><span>{label}</span><strong>{value??'—'}</strong></div>)}</div><h2>Your recent orders</h2>{orders.isLoading?<Skeleton/>:orders.error?<Notice error>{message(orders.error)}</Notice>:<Table rows={orders.data?.orders||[]} columns={[{label:'Event',render:r=>r.event?.title},{label:'Amount',render:r=>money(r.finalAmount)},{label:'Status',render:r=><Badge>{r.paymentStatus}</Badge>},{label:'Details',render:()=> <Link to="/dashboard/orders">View orders →</Link>}]}/>}<div className="section-heading"><h2>Ready for your next experience?</h2><Link to="/dashboard/tickets">Open your tickets →</Link></div></>; }
-export function TicketsPage() { const [page,setPage]=useState(1);const [active,setActive]=useState<any>(null);const {data,isLoading,error}=useData('/tickets',{page});return <><PageTitle eyebrow="Entry made simple" title="Your tickets.">Each pass has its own unique QR code. Keep it private.</PageTitle>{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:data?.tickets?.length?<div className="ticket-grid">{data.tickets.map((t:any)=><article className="pass-card" key={t._id}><img src={t.event?.coverImage} alt=""/><div><Badge>{t.status}</Badge><h3>{t.event?.title||'Event unavailable'}</h3><p>{t.ticketType?.name} · {t.attendeeName}</p><p>{date(t.event?.startDate)}</p><p>{t.event?.venue?.name}</p><code>{t.ticketNumber}</code><Button variant="secondary" disabled={!t.event} onClick={()=>setActive(t)}>View entry pass</Button></div></article>)}</div>:<Empty title="You don’t have any tickets yet">Explore events and find something worth showing up for.</Empty>}<Pagination value={data?.pagination} onChange={setPage}/>{active&&<Modal title="Your entry pass" onClose={()=>setActive(null)}><div className="print-pass"><h2>{active.event.title}</h2><p>{date(active.event.startDate)} · {active.event.venue?.name}</p><p>{active.attendeeName} · {active.ticketType?.name}</p><Badge>{active.status}</Badge>{active.status==='VALID'?<QRCodeSVG value={active.qrVerificationId} size={220} level="M" marginSize={4}/>:<Notice>This ticket is {active.status.toLowerCase()} and is not valid for entry.</Notice>}<code>{active.ticketNumber}</code><p>One attendee per pass. Present this QR at the event entrance.</p></div><Button onClick={()=>window.print()}>Print / save as PDF</Button></Modal>}</>; }
-export function OrdersPage() {const [page,setPage]=useState(1);const [selected,setSelected]=useState<any>(null);const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false);const {data,isLoading,error}=useData('/orders',{page});const refunds=useData('/refunds',{limit:100});return <><PageTitle eyebrow="Purchase history" title="Orders & refunds."/>{notice&&<Notice>{notice}</Notice>}{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:<Table rows={data?.orders||[]} columns={[{label:'Order',render:r=><><strong>{r.event?.title}</strong><small>{r.orderNumber}</small><small>{date(r.createdAt)}</small></>},{label:'Total',render:r=>money(r.finalAmount)},{label:'Payment / booking',render:r=><><Badge>{r.paymentStatus}</Badge><small>{r.bookingStatus}</small></>},{label:'Refund',render:r=>{const refund=refunds.data?.refunds?.find((f:any)=>(f.booking?._id||f.booking)===r.booking?._id);return refund?<Badge>{refund.status}</Badge>:r.paymentStatus==='COMPLETED'?<Button variant="secondary" onClick={()=>setSelected(r)}>Request refund</Button>:<span>—</span>;}}]}/>}<Pagination value={data?.pagination} onChange={setPage}/>{selected&&<Modal title="Request a refund" onClose={()=>setSelected(null)}><p>{selected.event?.title} · {money(selected.finalAmount)}</p><p>Unused tickets are eligible until 24 hours before the event, or if the event is cancelled.</p><form className="form-stack" onSubmit={async e=>{e.preventDefault();setBusy(true);const form=new FormData(e.currentTarget);try{await api.post('/refunds/request',{bookingId:selected.booking._id,reason:form.get('reason')});setSelected(null);setNotice('Refund request submitted. You will receive a status notification.');await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}finally{setBusy(false);}}}><Field label="Reason"><textarea name="reason" required minLength={10} maxLength={2000}/></Field><Button busy={busy}>Submit request</Button></form></Modal>}</>;}
-export function WishlistPage() {const [page,setPage]=useState(1);const {data,isLoading,error}=useData('/wishlist',{page});return <><PageTitle eyebrow="Keep a little possibility" title="Your saved experiences."/>{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:data?.wishlist?.length?<div className="three-grid">{data.wishlist.map((e:any)=><MarketCard key={e._id} event={e} saved/>)}</div>:<Empty title="Save events you love">Tap the heart on an event and find it here.</Empty>}<Pagination value={data?.pagination} onChange={setPage}/></>;}
-export function NotificationsPage() {const [page,setPage]=useState(1);const [notice,setNotice]=useState('');const {data,isLoading,error}=useData('/notifications',{page});const read=async(id:string)=>{try{await api.put(`/notifications/${id}/read`);await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}};return <><PageTitle eyebrow={`${data?.unreadCount||0} unread`} title="Your notifications." action={<Button variant="secondary" onClick={()=>read('all')}>Mark all read</Button>}/>{notice&&<Notice error>{notice}</Notice>}{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:data?.notifications?.length?<div className="notification-list">{data.notifications.map((n:any)=><article className={n.read?'read':''} key={n._id}><Badge>{n.type}{!n.read?' · Unread':''}</Badge><h3>{n.title}</h3><p>{n.message}</p><small>{date(n.createdAt)}</small>{!n.read&&<Button variant="secondary" onClick={()=>read(n._id)}>Mark read</Button>}</article>)}</div>:<Empty title="You’re all caught up"/>}<Pagination value={data?.pagination} onChange={setPage}/></>;}
-export function ReviewsPage() {const [page,setPage]=useState(1);const [notice,setNotice]=useState('');const [busy,setBusy]=useState(false);const reviews=useData('/reviews',{page});const tickets=useData('/tickets',{status:'USED',limit:100});const events=Array.from(new Map<string,any>((tickets.data?.tickets||[]).filter((t:any)=>t.event).map((t:any)=>[t.event._id,t.event])).values());return <><PageTitle eyebrow="Your voice, your experience" title="Reviews."/>{notice&&<Notice>{notice}</Notice>}{events.length>0&&<form className="panel form-stack" onSubmit={async e=>{e.preventDefault();const form=e.currentTarget;const input=Object.fromEntries(new FormData(form));setBusy(true);try{await api.post('/reviews',{...input,rating:Number(input.rating)});form.reset();setNotice('Thanks for sharing your experience.');await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}finally{setBusy(false);}}}><h2>Share an attended experience</h2><Field label="Event"><select name="eventId" required>{events.map((e:any)=><option key={e._id} value={e._id}>{e.title}</option>)}</select></Field><Field label="Rating"><select name="rating">{[5,4,3,2,1].map(n=><option key={n}>{n}</option>)}</select></Field><Field label="Review title"><input name="title" required maxLength={120}/></Field><Field label="Your experience"><textarea name="content" required maxLength={5000}/></Field><Button busy={busy}>Publish review</Button></form>}{reviews.isLoading?<Skeleton/>:reviews.error?<Notice error>{message(reviews.error)}</Notice>:<Table rows={reviews.data?.reviews||[]} columns={[{label:'Event',render:r=>r.event?.title},{label:'Rating',render:r=>`${r.rating}/5`},{label:'Review',render:r=><><strong>{r.title}</strong><p>{r.content}</p></>},{label:'Status',render:r=>r.isVerified?'Published':'Hidden by moderation'}]}/>}<Pagination value={reviews.data?.pagination} onChange={setPage}/></>;}
-export function ProfilePage({settings=false}:{settings?:boolean}) {const {user,setAuth,token}=useAuthStore();const [busy,setBusy]=useState(false);const [notice,setNotice]=useState('');return <><PageTitle eyebrow="Your account" title={settings?'Account settings.':'Make yourself at home.'}/>{notice&&<Notice>{notice}</Notice>}{!settings?<form className="panel form-stack" onSubmit={async e=>{e.preventDefault();setBusy(true);try{const res=await api.put('/auth/profile',Object.fromEntries(new FormData(e.currentTarget)));setAuth(res.data.data.user,token!);setNotice('Profile updated');}catch(err){setNotice(message(err));}finally{setBusy(false);}}}><Field label="Full name"><input name="name" defaultValue={user?.name} required/></Field><Field label="Phone"><input name="phone" type="tel" defaultValue={user?.phone}/></Field><Field label="Email"><input value={user?.email||''} readOnly/></Field><Button busy={busy}>Save profile</Button><Button type="button" variant="secondary" onClick={async()=>{try{const res=await api.post('/auth/resend-verification');setNotice(res.data.message);}catch(err){setNotice(message(err));}}}>Resend verification email</Button></form>:<><form className="panel form-stack" onSubmit={async e=>{e.preventDefault();setBusy(true);const form=e.currentTarget;try{const res=await api.post('/auth/change-password',Object.fromEntries(new FormData(form)));setAuth(res.data.data.user,res.data.data.token);setNotice('Password changed');form.reset();}catch(err){setNotice(message(err));}finally{setBusy(false);}}}><h2>Change password</h2><Field label="Current password"><input name="currentPassword" type="password" required autoComplete="current-password"/></Field><Field label="New password" hint="10+ characters, uppercase, lowercase and a number"><input name="password" type="password" minLength={10} maxLength={72} required autoComplete="new-password"/></Field><Button busy={busy}>Update password</Button></form><form className="panel form-stack" onSubmit={async e=>{e.preventDefault();const form=new FormData(e.currentTarget);try{const res=await api.put('/auth/profile',{name:user?.name,phone:user?.phone||'',preferences:{notifications:form.has('notifications'),newsletter:form.has('newsletter')}});setAuth(res.data.data.user,token!);setNotice('Preferences updated');}catch(err){setNotice(message(err));}}}><h2>Stay in the loop</h2><label className="check"><input name="notifications" type="checkbox" defaultChecked={user?.preferences?.notifications!==false}/>Email me booking and event updates</label><label className="check"><input name="newsletter" type="checkbox" defaultChecked={user?.preferences?.newsletter!==false}/>Newsletter updates</label><Button>Save preferences</Button></form></>}</>;}
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
+import { useData } from "../hooks/useData.js";
+import { api } from "../api/axios.js";
+import { queryClient } from "../api/queryClient.js";
+import { useAuthStore } from "../store/useAuthStore.js";
+import {
+  Badge,
+  Button,
+  Empty,
+  Field,
+  Modal,
+  Notice,
+  PageTitle,
+  Pagination,
+  Skeleton,
+  Table,
+  date,
+  money,
+  message,
+} from "../components/ui.js";
+import { MarketCard } from "./Marketplace.js";
+export function CustomerOverview() {
+  const tickets = useData("/tickets", { limit: 5 });
+  const orders = useData("/orders", { limit: 5 });
+  const wishlist = useData("/wishlist", { limit: 1 });
+  return (
+    <>
+      <PageTitle
+        eyebrow="Your Eventra"
+        title="Good plans start here."
+        action={
+          <Link className="btn primary" to="/events">
+            Discover events ↗
+          </Link>
+        }
+      />
+      <div className="stats-grid">
+        {[
+          ["Your tickets", tickets.data?.pagination?.total],
+          ["Orders", orders.data?.pagination?.total],
+          ["Saved events", wishlist.data?.pagination?.total],
+        ].map(([label, value]) => (
+          <div className="stat" key={label}>
+            <span>{label}</span>
+            <strong>{value ?? "—"}</strong>
+          </div>
+        ))}
+      </div>
+      <h2>Your recent orders</h2>
+      {orders.isLoading ? (
+        <Skeleton />
+      ) : orders.error ? (
+        <Notice error>{message(orders.error)}</Notice>
+      ) : (
+        <Table
+          rows={orders.data?.orders || []}
+          columns={[
+            { label: "Event", render: (r) => r.event?.title },
+            { label: "Amount", render: (r) => money(r.finalAmount) },
+            {
+              label: "Status",
+              render: (r) => <Badge>{r.paymentStatus}</Badge>,
+            },
+            {
+              label: "Details",
+              render: () => <Link to="/dashboard/orders">View orders →</Link>,
+            },
+          ]}
+        />
+      )}
+      <div className="section-heading">
+        <h2>Ready for your next experience?</h2>
+        <Link to="/dashboard/tickets">Open your tickets →</Link>
+      </div>
+    </>
+  );
+}
+export function TicketsPage() {
+  const [page, setPage] = useState(1);
+  const [active, setActive] = useState<any>(null);
+  const { data, isLoading, error } = useData("/tickets", { page });
+  return (
+    <>
+      <PageTitle eyebrow="Entry made simple" title="Your tickets.">
+        Each pass has its own unique QR code. Keep it private.
+      </PageTitle>
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : data?.tickets?.length ? (
+        <div className="ticket-grid">
+          {data.tickets.map((t: any) => (
+            <article className="pass-card" key={t._id}>
+              <img src={t.event?.coverImage} alt="" />
+              <div>
+                <Badge>{t.status}</Badge>
+                <h3>{t.event?.title || "Event unavailable"}</h3>
+                <p>
+                  {t.ticketType?.name} · {t.attendeeName}
+                </p>
+                <p>{date(t.event?.startDate)}</p>
+                <p>{t.event?.venue?.name}</p>
+                <code>{t.ticketNumber}</code>
+                <Button
+                  variant="secondary"
+                  disabled={!t.event}
+                  onClick={() => setActive(t)}
+                >
+                  View entry pass
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty title="You don’t have any tickets yet">
+          Explore events and find something worth showing up for.
+        </Empty>
+      )}
+      <Pagination value={data?.pagination} onChange={setPage} />
+      {active && (
+        <Modal title="Your entry pass" onClose={() => setActive(null)}>
+          <div className="print-pass">
+            <h2>{active.event.title}</h2>
+            <p>
+              {date(active.event.startDate)} · {active.event.venue?.name}
+            </p>
+            <p>
+              {active.attendeeName} · {active.ticketType?.name}
+            </p>
+            <Badge>{active.status}</Badge>
+            {active.status === "VALID" ? (
+              <QRCodeSVG
+                value={active.qrVerificationId}
+                size={220}
+                level="M"
+                marginSize={4}
+              />
+            ) : (
+              <Notice>
+                This ticket is {active.status.toLowerCase()} and is not valid
+                for entry.
+              </Notice>
+            )}
+            <code>{active.ticketNumber}</code>
+            <p>One attendee per pass. Present this QR at the event entrance.</p>
+          </div>
+          <Button onClick={() => window.print()}>Print / save as PDF</Button>
+        </Modal>
+      )}
+    </>
+  );
+}
+export function OrdersPage() {
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<any>(null);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { data, isLoading, error } = useData("/orders", { page });
+  const refunds = useData("/refunds", { limit: 100 });
+  return (
+    <>
+      <PageTitle eyebrow="Purchase history" title="Orders & refunds." />
+      {notice && <Notice>{notice}</Notice>}
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : (
+        <Table
+          rows={data?.orders || []}
+          columns={[
+            {
+              label: "Order",
+              render: (r) => (
+                <>
+                  <strong>{r.event?.title}</strong>
+                  <small>{r.orderNumber}</small>
+                  <small>{date(r.createdAt)}</small>
+                </>
+              ),
+            },
+            { label: "Total", render: (r) => money(r.finalAmount) },
+            {
+              label: "Payment / booking",
+              render: (r) => (
+                <>
+                  <Badge>{r.paymentStatus}</Badge>
+                  <small>{r.bookingStatus}</small>
+                </>
+              ),
+            },
+            {
+              label: "Refund",
+              render: (r) => {
+                const refund = refunds.data?.refunds?.find(
+                  (f: any) => (f.booking?._id || f.booking) === r.booking?._id,
+                );
+                return refund ? (
+                  <Badge>{refund.status}</Badge>
+                ) : r.paymentStatus === "COMPLETED" ? (
+                  <Button variant="secondary" onClick={() => setSelected(r)}>
+                    Request refund
+                  </Button>
+                ) : (
+                  <span>—</span>
+                );
+              },
+            },
+          ]}
+        />
+      )}
+      <Pagination value={data?.pagination} onChange={setPage} />
+      {selected && (
+        <Modal title="Request a refund" onClose={() => setSelected(null)}>
+          <p>
+            {selected.event?.title} · {money(selected.finalAmount)}
+          </p>
+          <p>
+            Unused tickets are eligible until 24 hours before the event, or if
+            the event is cancelled.
+          </p>
+          <form
+            className="form-stack"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              const form = new FormData(e.currentTarget);
+              try {
+                await api.post("/refunds/request", {
+                  bookingId: selected.booking._id,
+                  reason: form.get("reason"),
+                });
+                setSelected(null);
+                setNotice(
+                  "Refund request submitted. You will receive a status notification.",
+                );
+                await queryClient.invalidateQueries();
+              } catch (err) {
+                setNotice(message(err));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Field label="Reason">
+              <textarea
+                name="reason"
+                required
+                minLength={10}
+                maxLength={2000}
+              />
+            </Field>
+            <Button busy={busy}>Submit request</Button>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+export function WishlistPage() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, error } = useData("/wishlist", { page });
+  return (
+    <>
+      <PageTitle
+        eyebrow="Keep a little possibility"
+        title="Your saved experiences."
+      />
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : data?.wishlist?.length ? (
+        <div className="three-grid">
+          {data.wishlist.map((e: any) => (
+            <MarketCard key={e._id} event={e} saved />
+          ))}
+        </div>
+      ) : (
+        <Empty title="Save events you love">
+          Tap the heart on an event and find it here.
+        </Empty>
+      )}
+      <Pagination value={data?.pagination} onChange={setPage} />
+    </>
+  );
+}
+export function NotificationsPage() {
+  const [page, setPage] = useState(1);
+  const [notice, setNotice] = useState("");
+  const { data, isLoading, error } = useData("/notifications", { page });
+  const read = async (id: string) => {
+    try {
+      await api.put(`/notifications/${id}/read`);
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setNotice(message(err));
+    }
+  };
+  return (
+    <>
+      <PageTitle
+        eyebrow={`${data?.unreadCount || 0} unread`}
+        title="Your notifications."
+        action={
+          <Button variant="secondary" onClick={() => read("all")}>
+            Mark all read
+          </Button>
+        }
+      />
+      {notice && <Notice error>{notice}</Notice>}
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : data?.notifications?.length ? (
+        <div className="notification-list">
+          {data.notifications.map((n: any) => (
+            <article className={n.read ? "read" : ""} key={n._id}>
+              <Badge>
+                {n.type}
+                {!n.read ? " · Unread" : ""}
+              </Badge>
+              <h3>{n.title}</h3>
+              <p>{n.message}</p>
+              <small>{date(n.createdAt)}</small>
+              {!n.read && (
+                <Button variant="secondary" onClick={() => read(n._id)}>
+                  Mark read
+                </Button>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty title="You’re all caught up" />
+      )}
+      <Pagination value={data?.pagination} onChange={setPage} />
+    </>
+  );
+}
+export function ReviewsPage() {
+  const [page, setPage] = useState(1);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const reviews = useData("/reviews", { page });
+  const tickets = useData("/tickets", { status: "USED", limit: 100 });
+  const events = Array.from(
+    new Map<string, any>(
+      (tickets.data?.tickets || [])
+        .filter((t: any) => t.event)
+        .map((t: any) => [t.event._id, t.event]),
+    ).values(),
+  );
+  return (
+    <>
+      <PageTitle eyebrow="Your voice, your experience" title="Reviews." />
+      {notice && <Notice>{notice}</Notice>}
+      {events.length > 0 && (
+        <form
+          className="panel form-stack"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const input = Object.fromEntries(new FormData(form));
+            setBusy(true);
+            try {
+              await api.post("/reviews", {
+                ...input,
+                rating: Number(input.rating),
+              });
+              form.reset();
+              setNotice("Thanks for sharing your experience.");
+              await queryClient.invalidateQueries();
+            } catch (err) {
+              setNotice(message(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <h2>Share an attended experience</h2>
+          <Field label="Event">
+            <select name="eventId" required>
+              {events.map((e: any) => (
+                <option key={e._id} value={e._id}>
+                  {e.title}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Rating">
+            <select name="rating">
+              {[5, 4, 3, 2, 1].map((n) => (
+                <option key={n}>{n}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Review title">
+            <input name="title" required maxLength={120} />
+          </Field>
+          <Field label="Your experience">
+            <textarea name="content" required maxLength={5000} />
+          </Field>
+          <Button busy={busy}>Publish review</Button>
+        </form>
+      )}
+      {reviews.isLoading ? (
+        <Skeleton />
+      ) : reviews.error ? (
+        <Notice error>{message(reviews.error)}</Notice>
+      ) : (
+        <Table
+          rows={reviews.data?.reviews || []}
+          columns={[
+            { label: "Event", render: (r) => r.event?.title },
+            { label: "Rating", render: (r) => `${r.rating}/5` },
+            {
+              label: "Review",
+              render: (r) => (
+                <>
+                  <strong>{r.title}</strong>
+                  <p>{r.content}</p>
+                </>
+              ),
+            },
+            {
+              label: "Status",
+              render: (r) =>
+                r.isVerified ? "Published" : "Hidden by moderation",
+            },
+          ]}
+        />
+      )}
+      <Pagination value={reviews.data?.pagination} onChange={setPage} />
+    </>
+  );
+}
+export function ProfilePage({ settings = false }: { settings?: boolean }) {
+  const { user, setAuth, token } = useAuthStore();
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  return (
+    <>
+      <PageTitle
+        eyebrow="Your account"
+        title={settings ? "Account settings." : "Make yourself at home."}
+      />
+      {notice && <Notice>{notice}</Notice>}
+      {!settings ? (
+        <form
+          className="panel form-stack"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              const res = await api.put(
+                "/auth/profile",
+                Object.fromEntries(new FormData(e.currentTarget)),
+              );
+              setAuth(res.data.data.user, token!);
+              setNotice("Profile updated");
+            } catch (err) {
+              setNotice(message(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Field label="Full name">
+            <input name="name" defaultValue={user?.name} required />
+          </Field>
+          <Field label="Phone">
+            <input name="phone" type="tel" defaultValue={user?.phone} />
+          </Field>
+          <Field label="Email">
+            <input value={user?.email || ""} readOnly />
+          </Field>
+          <Button busy={busy}>Save profile</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={async () => {
+              try {
+                const res = await api.post("/auth/resend-verification");
+                setNotice(res.data.message);
+              } catch (err) {
+                setNotice(message(err));
+              }
+            }}
+          >
+            Resend verification email
+          </Button>
+        </form>
+      ) : (
+        <>
+          <form
+            className="panel form-stack"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              const form = e.currentTarget;
+              try {
+                const res = await api.post(
+                  "/auth/change-password",
+                  Object.fromEntries(new FormData(form)),
+                );
+                setAuth(res.data.data.user, res.data.data.token);
+                setNotice("Password changed");
+                form.reset();
+              } catch (err) {
+                setNotice(message(err));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <h2>Change password</h2>
+            <Field label="Current password">
+              <input
+                name="currentPassword"
+                type="password"
+                required
+                autoComplete="current-password"
+              />
+            </Field>
+            <Field
+              label="New password"
+              hint="10+ characters, uppercase, lowercase and a number"
+            >
+              <input
+                name="password"
+                type="password"
+                minLength={10}
+                maxLength={72}
+                required
+                autoComplete="new-password"
+              />
+            </Field>
+            <Button busy={busy}>Update password</Button>
+          </form>
+          <form
+            className="panel form-stack"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = new FormData(e.currentTarget);
+              try {
+                const res = await api.put("/auth/profile", {
+                  name: user?.name,
+                  phone: user?.phone || "",
+                  preferences: {
+                    notifications: form.has("notifications"),
+                    newsletter: form.has("newsletter"),
+                  },
+                });
+                setAuth(res.data.data.user, token!);
+                setNotice("Preferences updated");
+              } catch (err) {
+                setNotice(message(err));
+              }
+            }}
+          >
+            <h2>Stay in the loop</h2>
+            <label className="check">
+              <input
+                name="notifications"
+                type="checkbox"
+                defaultChecked={user?.preferences?.notifications !== false}
+              />
+              Email me booking and event updates
+            </label>
+            <label className="check">
+              <input
+                name="newsletter"
+                type="checkbox"
+                defaultChecked={user?.preferences?.newsletter !== false}
+              />
+              Newsletter updates
+            </label>
+            <Button>Save preferences</Button>
+          </form>
+        </>
+      )}
+    </>
+  );
+}

@@ -1,2 +1,18 @@
-import { Schema, model } from 'mongoose';
-export const Article = model('Article', new Schema({ title: { type: String, required: true }, slug: { type: String, required: true, unique: true }, excerpt: String, content: { type: String, required: true }, author: String, category: String, image: String, published: { type: Boolean, default: false }, readingMinutes: { type: Number, default: 5 } }, { timestamps: true }));
+import { Schema, model } from "mongoose";
+export const Article = model(
+  "Article",
+  new Schema(
+    {
+      title: { type: String, required: true },
+      slug: { type: String, required: true, unique: true },
+      excerpt: String,
+      content: { type: String, required: true },
+      author: String,
+      category: String,
+      image: String,
+      published: { type: Boolean, default: false },
+      readingMinutes: { type: Number, default: 5 },
+    },
+    { timestamps: true },
+  ),
+);

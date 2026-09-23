@@ -1,6 +1,7 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types } from "mongoose";
 
-export type RefundStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'PROCESSED' | 'FAILED';
+export type RefundStatus =
+  "REQUESTED" | "APPROVED" | "REJECTED" | "PROCESSED" | "FAILED";
 
 export interface IRefund extends Document {
   booking: Types.ObjectId;
@@ -12,29 +13,40 @@ export interface IRefund extends Document {
   processedAt?: Date;
   notes?: string;
   providerRefundId?: string;
+  providerRequestStarted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const RefundSchema = new Schema<IRefund>(
   {
-    booking: { type: Schema.Types.ObjectId, ref: 'Booking', required: true, index: true },
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    booking: {
+      type: Schema.Types.ObjectId,
+      ref: "Booking",
+      required: true,
+      unique: true,
+    },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
     amount: { type: Number, required: true },
     reason: { type: String, required: true },
     status: {
       type: String,
-      enum: ['REQUESTED', 'APPROVED', 'REJECTED', 'PROCESSED', 'FAILED'],
-      default: 'REQUESTED',
+      enum: ["REQUESTED", "APPROVED", "REJECTED", "PROCESSED", "FAILED"],
+      default: "REQUESTED",
       index: true,
     },
-    processedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    processedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
     processedAt: { type: Date, default: null },
-    notes: { type: String, default: '' },
+    notes: { type: String, default: "" },
     providerRefundId: String,
+    providerRequestStarted: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-RefundSchema.index({ booking: 1 }, { unique: true });
-export const Refund = model<IRefund>('Refund', RefundSchema);
+export const Refund = model<IRefund>("Refund", RefundSchema);

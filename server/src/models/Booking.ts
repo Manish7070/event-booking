@@ -1,8 +1,8 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types } from "mongoose";
 
-export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REFUNDED';
-export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
-export type TicketStatus = 'VALID' | 'USED' | 'CANCELLED' | 'EXPIRED';
+export type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "REFUNDED";
+export type PaymentStatus = "PENDING" | "COMPLETED" | "FAILED" | "REFUNDED";
+export type TicketStatus = "VALID" | "USED" | "CANCELLED" | "EXPIRED";
 
 export interface IBookingTicketItem {
   ticketType: Types.ObjectId;
@@ -50,12 +50,26 @@ const BookingSchema = new Schema<IBooking>(
     requestHash: String,
     expiresAt: { type: Date, index: true },
     reservationReleased: { type: Boolean, default: false },
-    coupon: { type: Schema.Types.ObjectId, ref: 'Coupon' },
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    event: { type: Schema.Types.ObjectId, ref: 'Event', required: true, index: true },
+    coupon: { type: Schema.Types.ObjectId, ref: "Coupon" },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    event: {
+      type: Schema.Types.ObjectId,
+      ref: "Event",
+      required: true,
+      index: true,
+    },
     tickets: [
       {
-        ticketType: { type: Schema.Types.ObjectId, ref: 'TicketType', required: true },
+        ticketType: {
+          type: Schema.Types.ObjectId,
+          ref: "TicketType",
+          required: true,
+        },
         name: { type: String, required: true },
         price: { type: Number, required: true },
         quantity: { type: Number, required: true },
@@ -72,14 +86,14 @@ const BookingSchema = new Schema<IBooking>(
     couponCode: { type: String, default: null },
     status: {
       type: String,
-      enum: ['PENDING', 'CONFIRMED', 'CANCELLED', 'REFUNDED'],
-      default: 'PENDING',
+      enum: ["PENDING", "CONFIRMED", "CANCELLED", "REFUNDED"],
+      default: "PENDING",
       index: true,
     },
     paymentStatus: {
       type: String,
-      enum: ['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED'],
-      default: 'PENDING',
+      enum: ["PENDING", "COMPLETED", "FAILED", "REFUNDED"],
+      default: "PENDING",
       index: true,
     },
     paymentOrderId: { type: String, default: null },
@@ -87,16 +101,28 @@ const BookingSchema = new Schema<IBooking>(
     qrCodeData: { type: String, required: true },
     ticketStatus: {
       type: String,
-      enum: ['VALID', 'USED', 'CANCELLED', 'EXPIRED'],
-      default: 'VALID',
+      enum: ["VALID", "USED", "CANCELLED", "EXPIRED"],
+      default: "VALID",
     },
     checkedIn: { type: Boolean, default: false },
     checkedInAt: { type: Date, default: null },
-    notes: { type: String, default: '' },
+    notes: { type: String, default: "" },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-BookingSchema.index({ user: 1, idempotencyKey: 1 }, { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } });
-BookingSchema.index({ paymentOrderId: 1 }, { unique: true, partialFilterExpression: { paymentOrderId: { $type: 'string' } } });
-export const Booking = model<IBooking>('Booking', BookingSchema);
+BookingSchema.index(
+  { user: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+  },
+);
+BookingSchema.index(
+  { paymentOrderId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { paymentOrderId: { $type: "string" } },
+  },
+);
+export const Booking = model<IBooking>("Booking", BookingSchema);

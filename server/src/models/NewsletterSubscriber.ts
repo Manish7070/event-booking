@@ -1,4 +1,4 @@
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document } from "mongoose";
 
 export interface INewsletterSubscriber extends Document {
   email: string;
@@ -8,11 +8,20 @@ export interface INewsletterSubscriber extends Document {
 
 const NewsletterSubscriberSchema = new Schema<INewsletterSubscriber>(
   {
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
     isActive: { type: Boolean, default: true },
     subscribedAt: { type: Date, default: Date.now },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-export const NewsletterSubscriber = model<INewsletterSubscriber>('NewsletterSubscriber', NewsletterSubscriberSchema);
+export const NewsletterSubscriber = model<INewsletterSubscriber>(
+  "NewsletterSubscriber",
+  NewsletterSubscriberSchema,
+);

@@ -1,8 +1,14 @@
-export type UserRole = 'USER' | 'ORGANIZER' | 'ADMIN';
-export type EventStatus = 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
-export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REFUNDED';
-export type PaymentStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'REFUNDED';
-export type TicketStatus = 'VALID' | 'USED' | 'CANCELLED' | 'EXPIRED';
+export type UserRole = "USER" | "ORGANIZER" | "ADMIN";
+export type EventStatus =
+  | "DRAFT"
+  | "PENDING_REVIEW"
+  | "PUBLISHED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "COMPLETED";
+export type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "REFUNDED";
+export type PaymentStatus = "PENDING" | "COMPLETED" | "FAILED" | "REFUNDED";
+export type TicketStatus = "VALID" | "USED" | "CANCELLED" | "EXPIRED";
 
 export interface User {
   id: string;

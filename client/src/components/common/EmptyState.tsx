@@ -1,5 +1,5 @@
-import React from 'react';
-import { CalendarX, Search } from 'lucide-react';
+import React from "react";
+import { Search } from "lucide-react";
 
 interface EmptyStateProps {
   icon?: React.ReactNode;
@@ -11,8 +11,8 @@ interface EmptyStateProps {
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   icon,
-  title = 'No results found',
-  message = 'We could not find anything matching your request.',
+  title = "No results found",
+  message = "We could not find anything matching your request.",
   actionText,
   onAction,
 }) => {

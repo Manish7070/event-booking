@@ -1,9 +1,10 @@
-import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuthStore } from '../store/useAuthStore.js';
-import { LoadingState } from '../components/common/LoadingState.js';
+import React from "react";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useAuthStore } from "../store/useAuthStore.js";
+import { LoadingState } from "../components/common/LoadingState.js";
 
 export const ProtectedRoute: React.FC = () => {
+  const location = useLocation();
   const { isAuthenticated, isLoading } = useAuthStore();
 
   if (isLoading) {
@@ -11,14 +12,19 @@ export const ProtectedRoute: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
+        replace
+      />
+    );
   }
 
   return <Outlet />;
 };
 
 interface RoleRouteProps {
-  allowedRoles: Array<'USER' | 'ORGANIZER' | 'ADMIN'>;
+  allowedRoles: Array<"USER" | "ORGANIZER" | "ADMIN">;
 }
 
 export const RoleRoute: React.FC<RoleRouteProps> = ({ allowedRoles }) => {
@@ -29,7 +35,7 @@ export const RoleRoute: React.FC<RoleRouteProps> = ({ allowedRoles }) => {
   }
 
   if (!user || !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={user ? "/forbidden" : "/login"} replace />;
   }
 
   return <Outlet />;

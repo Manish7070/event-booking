@@ -1,64 +1,1157 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
-import { useData } from '../hooks/useData.js';
-import { api } from '../api/axios.js';
-import { queryClient } from '../api/queryClient.js';
-import { Badge, Button, Field, Modal, Notice, PageTitle, Pagination, Skeleton, Table, date, money, message } from '../components/ui.js';
-export function AnalyticsPage({admin=false,overview=false}:{admin?:boolean;overview?:boolean}) {const {data,isLoading,error}=useData(admin?'/admin/stats':'/organizers/stats');return <><PageTitle eyebrow={admin?'Platform intelligence':'Your event business'} title={overview?'A clear view of what’s next.':'The numbers behind the experience.'} action={!admin?<Link className="btn primary" to="/organizer/events/create">Create event ↗</Link>:undefined}/>{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:data&&<><div className="stats-grid">{Object.entries(data.stats).map(([key,value])=><div className="stat" key={key}><span>{key.replace(/([A-Z])/g,' $1')}</span><strong>{key==='totalRevenue'?money(Number(value)):String(value)}</strong></div>)}</div><section className="panel"><h2>Revenue over time</h2><p>Captured, non-refunded bookings. Display currency: INR.</p><div className="chart"><ResponsiveContainer width="100%" height={300}><AreaChart data={data.daily}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="_id"/><YAxis/><Tooltip formatter={(v:any)=>money(Number(v))}/><Area type="monotone" dataKey="revenue" stroke="#6651c8" fill="#ded8f5"/></AreaChart></ResponsiveContainer></div></section><section className="panel"><h2>Booking activity</h2><div className="chart"><ResponsiveContainer width="100%" height={260}><BarChart data={data.daily}><XAxis dataKey="_id"/><YAxis allowDecimals={false}/><Tooltip/><Bar dataKey="bookings" fill="#263b35"/></BarChart></ResponsiveContainer></div></section>{overview&&<><h2>{admin?'Pending moderation':'Recent events'}</h2><Table rows={data.recentEvents||[]} columns={[{label:'Event',render:r=>r.title},{label:'Status',render:r=><Badge>{r.status}</Badge>},{label:'Start',render:r=>date(r.startDate)},{label:'Manage',render:r=><Link to={admin?'/admin/events':`/organizer/events/${r._id}/edit`}>Open →</Link>}]}/></>}</>}</>;}
-const resourceLabels:Record<string,string>={users:'User accounts',organizers:'Organizer applications',events:'Event management',categories:'Event categories',venues:'Venue directory',bookings:'Bookings',orders:'Orders',payments:'Payment ledger',refunds:'Refund requests',coupons:'Discount codes',reviews:'Attendee reviews',payouts:'Organizer payouts',notifications:'Notification history','audit-logs':'Audit trail',resources:'Journal articles',attendees:'Attendee list'};
-export function ManagementPage({resource,admin=false}:{resource:string;admin?:boolean}) {
- const [page,setPage]=useState(1);const [q,setQ]=useState('');const [status,setStatus]=useState('');const [notice,setNotice]=useState('');const [action,setAction]=useState<any>(null);const [busy,setBusy]=useState(false);
- const {data,isLoading,error}=useData(`/${admin?'admin':'organizers'}/${resource}`,{page,q:q||undefined,status:status||undefined});const rows=admin?data?.items:data?.[resource];
- const mutate=async(path:string,payload:any,method='put')=>{setBusy(true);try{const res=await api.request({url:path,method,data:payload});setNotice(res.data.message||'Saved');setAction(null);await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}finally{setBusy(false);}};
- const operations=(row:any)=>{const buttons=[];if(admin&&resource==='users'&&row.role!=='ADMIN')buttons.push(<Button key="status" variant="secondary" onClick={()=>setAction({type:'user',row})}>{row.isActive?'Disable':'Enable'}</Button>);
- if(admin&&resource==='organizers')buttons.push(<Button key="review" variant="secondary" onClick={()=>setAction({type:'organizer',row})}>Review application</Button>);
- if(resource==='events') {buttons.push(<Link className="btn secondary" key="preview" to={admin?`/admin/events/${row._id}/preview`:`/organizer/events/${row._id}/edit`}>{admin?'Preview':'Edit / preview'}</Link>);if(admin) {buttons.push(<Button key="moderate" variant="secondary" onClick={()=>setAction({type:'event',row})}>Moderate</Button>);buttons.push(<Button key="curate" variant="secondary" onClick={()=>setAction({type:'curation',row})}>Feature / trend</Button>);}else {buttons.push(<Link key="scan" className="btn secondary" to={`/organizer/check-in?event=${row._id}`}>Check-in</Link>);if(['DRAFT','REJECTED'].includes(row.status))buttons.push(<Button key="submit" variant="secondary" onClick={()=>mutate(`/events/${row._id}/submit`,{},'post')}>Submit for review</Button>);}}
- if(resource==='coupons')buttons.push(<Button key="coupon" variant="secondary" onClick={()=>mutate(`/coupons/${row._id}`,{isActive:!row.isActive})}>{row.isActive?'Deactivate':'Activate'}</Button>);
- if(admin&&resource==='categories')buttons.push(<Button key="category" variant="secondary" onClick={()=>mutate(`/admin/categories/${row._id}`,{isActive:!row.isActive})}>{row.isActive?'Hide':'Show'}</Button>);
- if(admin&&resource==='reviews')buttons.push(<Button key="review" variant="secondary" onClick={()=>mutate(`/admin/reviews/${row._id}/moderate`,{isVerified:!row.isVerified})}>{row.isVerified?'Hide review':'Restore review'}</Button>);
- if(admin&&resource==='refunds'){if(row.status==='REQUESTED')buttons.push(<Button key="review" variant="secondary" onClick={()=>setAction({type:'refund',row})}>Review request</Button>);if(row.status==='APPROVED')buttons.push(<Button key="process" variant="secondary" onClick={()=>mutate(`/admin/refunds/${row._id}/process`,{},'post')}>Process / reconcile</Button>);}
- if(admin&&resource==='payouts'&&['REQUESTED','PROCESSING'].includes(row.status))buttons.push(<Button key="payout" variant="secondary" onClick={()=>setAction({type:'payout',row})}>Review / reconcile</Button>);
- return <div className="row-actions">{buttons}</div>;};
- const columns:Record<string,any[]>={
- users:[{label:'Account',render:(r:any)=><><strong>{r.name}</strong><small>{r.email}</small></>},{label:'Role',render:(r:any)=>r.role},{label:'Status',render:(r:any)=><Badge>{r.isActive?'Active':'Disabled'}</Badge>}],
- organizers:[{label:'Organization',render:(r:any)=><><strong>{r.organizationName}</strong><small>{r.user?.email}</small><p>{r.bio}</p></>},{label:'Status',render:(r:any)=><Badge>{r.status}</Badge>}],
- events:[{label:'Event',render:(r:any)=><><strong>{r.title}</strong><small>{r.city} · {date(r.startDate)}</small>{r.moderationReason&&<small>Moderation: {r.moderationReason}</small>}</>},{label:'Status',render:(r:any)=><Badge>{r.status}</Badge>},{label:'Tickets',render:(r:any)=>`${r.soldTickets}/${r.totalTickets}`}],
- categories:[{label:'Category',render:(r:any)=>r.name},{label:'Description',render:(r:any)=>r.description},{label:'Visible',render:(r:any)=>r.isActive?'Yes':'No'}],
- venues:[{label:'Venue',render:(r:any)=><Link to={`/venues/${r.slug}`}>{r.name}</Link>},{label:'Location',render:(r:any)=>`${r.address}, ${r.city}`},{label:'Capacity',render:(r:any)=>r.capacity}],
- bookings:[{label:'Booking',render:(r:any)=><><strong>{r.bookingId}</strong><small>{r.event?.title}</small></>},{label:'Attendee',render:(r:any)=><>{r.attendeeName}<small>{r.attendeeEmail}</small></>},{label:'Total',render:(r:any)=>money(r.total)},{label:'Status',render:(r:any)=><>{r.status}<small>{r.paymentStatus}</small></>}],
- orders:[{label:'Order',render:(r:any)=><><strong>{r.orderNumber}</strong><small>{r.event?.title}</small></>},{label:'Total',render:(r:any)=>money(r.finalAmount)},{label:'Status',render:(r:any)=><>{r.bookingStatus}<small>{r.paymentStatus}</small></>}],
- payments:[{label:'Payment',render:(r:any)=><><code>{r.razorpayPaymentId}</code><small>{r.booking?.bookingId}</small></>},{label:'Amount',render:(r:any)=>money(r.amount)},{label:'Status',render:(r:any)=>r.status}],
- refunds:[{label:'Booking',render:(r:any)=>r.booking?.bookingId},{label:'Reason',render:(r:any)=>r.reason},{label:'Amount',render:(r:any)=>money(r.amount)},{label:'Status',render:(r:any)=>r.status}],
- coupons:[{label:'Coupon',render:(r:any)=><><strong>{r.code}</strong><small>{r.name}</small></>},{label:'Discount',render:(r:any)=>r.discountType==='PERCENTAGE'?`${r.discountValue}%`:money(r.discountValue)},{label:'Usage / expiry',render:(r:any)=><>{r.usedCount}/{r.usageLimit||'Unlimited'}<small>{date(r.expiryDate)}</small></>},{label:'Status',render:(r:any)=>r.isActive?'Active':'Inactive'}],
- reviews:[{label:'Event',render:(r:any)=>r.event?.title},{label:'Review',render:(r:any)=><><strong>{r.title}</strong><p>{r.content}</p></>},{label:'Rating',render:(r:any)=>`${r.rating}/5`},{label:'Visibility',render:(r:any)=>r.isVerified?'Published':'Hidden'}],
- payouts:[{label:'Organizer',render:(r:any)=>r.organizer?.name},{label:'Amount',render:(r:any)=>money(r.amount)},{label:'Status',render:(r:any)=>r.status},{label:'Provider reference',render:(r:any)=>r.referenceId||'Not processed'}],
- notifications:[{label:'Notification',render:(r:any)=><><strong>{r.title}</strong><p>{r.message}</p></>},{label:'Type',render:(r:any)=>r.type},{label:'Status',render:(r:any)=>r.read?'Read':'Unread'}],
- 'audit-logs':[{label:'Action',render:(r:any)=>r.action},{label:'Actor',render:(r:any)=>r.actorEmail},{label:'Entity',render:(r:any)=><>{r.entity}<small>{r.entityId}</small></>},{label:'When',render:(r:any)=>date(r.createdAt)}],
- resources:[{label:'Article',render:(r:any)=><Link to={`/resources/blog/${r.slug}`}>{r.title}</Link>},{label:'Author',render:(r:any)=>r.author},{label:'Status',render:(r:any)=>r.published?'Published':'Draft'}],
- attendees:[{label:'Attendee',render:(r:any)=><><strong>{r.attendeeName}</strong><small>{r.attendeeEmail}</small></>},{label:'Event / tier',render:(r:any)=><>{r.event?.title}<small>{r.ticketType?.name}</small></>},{label:'Ticket',render:(r:any)=><code>{r.ticketNumber}</code>},{label:'Status',render:(r:any)=>r.status}]
- };
- const create=['coupons','venues','categories','resources','notifications'].includes(resource)&&(admin||resource==='coupons');
- return <><PageTitle eyebrow={admin?'Administration':'Organizer workspace'} title={`${resourceLabels[resource]}.`} action={resource==='events'&&!admin?<Link className="btn primary" to="/organizer/events/create">Create event</Link>:create?<Button onClick={()=>setAction({type:`new-${resource}`})}>Create {resource==='resources'?'article':resource.replace(/s$/,'')}</Button>:undefined}/>{notice&&<Notice>{notice}</Notice>}<div className="results-toolbar"><label>Search<input value={q} onChange={e=>{setQ(e.target.value);setPage(1);}} placeholder="Search records"/></label>{['events','refunds','payouts'].includes(resource)&&admin&&<label>Status<select value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="">All</option>{(resource==='events'?['DRAFT','PENDING_REVIEW','PUBLISHED','REJECTED','CANCELLED']:resource==='refunds'?['REQUESTED','APPROVED','PROCESSED','REJECTED']:['REQUESTED','PROCESSING','COMPLETED','REJECTED']).map(s=><option key={s}>{s}</option>)}</select></label>}</div>{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:<Table rows={rows||[]} columns={[...(columns[resource]||[]),{label:'Actions',render:operations}]}/>}<Pagination value={data?.pagination} onChange={setPage}/>{action&&<ActionForm action={action} busy={busy} onClose={()=>setAction(null)} submit={mutate}/>}</>;
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  BarChart,
+  Bar,
+} from "recharts";
+import { useData } from "../hooks/useData.js";
+import { api } from "../api/axios.js";
+import { queryClient } from "../api/queryClient.js";
+import { LaunchGuide, ResourceEmpty } from "../components/Experience.js";
+import {
+  Badge,
+  Button,
+  Field,
+  Modal,
+  Notice,
+  PageTitle,
+  Pagination,
+  Skeleton,
+  Table,
+  date,
+  money,
+  message,
+} from "../components/ui.js";
+export function AnalyticsPage({
+  admin = false,
+  overview = false,
+}: {
+  admin?: boolean;
+  overview?: boolean;
+}) {
+  const { data, isLoading, error } = useData(
+    admin ? "/admin/stats" : "/organizers/stats",
+  );
+  return (
+    <>
+      <PageTitle
+        eyebrow={admin ? "Platform intelligence" : "Your event business"}
+        title={
+          overview
+            ? "A clear view of what’s next."
+            : "The numbers behind the experience."
+        }
+        action={
+          !admin ? (
+            <Link className="btn primary" to="/organizer/events/create">
+              Create event ↗
+            </Link>
+          ) : undefined
+        }
+      />
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : (
+        data && (
+          <>
+            <div className="stats-grid">
+              {Object.entries(data.stats).map(([key, value]) => (
+                <div className="stat" key={key}>
+                  <span>{key.replace(/([A-Z])/g, " $1")}</span>
+                  <strong>
+                    {key === "totalRevenue"
+                      ? money(Number(value))
+                      : String(value)}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            {!admin && data.stats.totalEvents === 0 && <LaunchGuide />}
+            {data.daily.length > 0 ? (
+              <section className="panel">
+                <h2>Revenue over time</h2>
+                <p>Captured, non-refunded bookings. Display currency: INR.</p>
+                <div className="chart">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={data.daily}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="_id" />
+                      <YAxis />
+                      <Tooltip formatter={(v: any) => money(Number(v))} />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#6651c8"
+                        fill="#ded8f5"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+            ) : data.stats.totalEvents > 0 || admin ? (
+              <div className="insight-note">
+                <span className="eyebrow">Revenue insights</span>
+                <h3>Ready for your first reservation.</h3>
+                <p>
+                  Revenue and booking charts appear after confirmed bookings.
+                  Your totals above reflect actual activity.
+                </p>
+              </div>
+            ) : null}
+            {data.daily.length > 0 && (
+              <section className="panel">
+                <h2>Booking activity</h2>
+                <div className="chart">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={data.daily}>
+                      <XAxis dataKey="_id" />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Bar dataKey="bookings" fill="#263b35" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+            )}
+            {overview && data.recentEvents?.length > 0 && (
+              <>
+                <h2>{admin ? "Pending moderation" : "Recent events"}</h2>
+                <Table
+                  rows={data.recentEvents || []}
+                  columns={[
+                    { label: "Event", render: (r) => r.title },
+                    {
+                      label: "Status",
+                      render: (r) => <Badge>{r.status}</Badge>,
+                    },
+                    { label: "Start", render: (r) => date(r.startDate) },
+                    {
+                      label: "Manage",
+                      render: (r) => (
+                        <Link
+                          to={
+                            admin
+                              ? "/admin/events"
+                              : `/organizer/events/${r._id}/edit`
+                          }
+                        >
+                          Open →
+                        </Link>
+                      ),
+                    },
+                  ]}
+                />
+              </>
+            )}
+          </>
+        )
+      )}
+    </>
+  );
 }
-function ActionForm({action,busy,onClose,submit}:{action:any;busy:boolean;onClose:()=>void;submit:(path:string,payload:any,method?:string)=>Promise<void>}) {
- const type=action.type;const row=action.row;const fields:Record<string,Array<[string,string,string?]>>={
- 'new-categories':[['name','Name'],['description','Description']],
- 'new-venues':[['name','Venue name'],['description','Description'],['address','Address'],['city','City'],['state','State'],['capacity','Capacity','number'],['image','Image URL','url']],
- 'new-coupons':[['code','Coupon code'],['name','Name'],['discountValue','Discount value','number'],['minimumOrder','Minimum order (₹)','number'],['maximumDiscount','Maximum discount (₹)','number'],['usageLimit','Total usage limit','number'],['perUserLimit','Per-customer limit','number'],['expiryDate','Expiry','datetime-local']],
- 'new-notifications':[['user','Recipient user ID'],['title','Title'],['message','Message']],
- 'new-resources':[['title','Title'],['excerpt','Excerpt'],['author','Author'],['category','Category']],
- };
- return <Modal title={type.startsWith('new-')?'Create record':'Review and confirm'} onClose={onClose}><form className="form-stack" onSubmit={async e=>{e.preventDefault();const values:any=Object.fromEntries(new FormData(e.currentTarget));if(type==='user')return submit(`/admin/users/${row._id}/status`,{isActive:!row.isActive});if(type==='organizer')return submit(`/admin/organizers/${row._id}/status`,values);if(type==='event')return submit(`/admin/events/${row._id}/moderate`,values);if(type==='curation')return submit(`/admin/events/${row._id}/curation`,{featured:values.featured==='on',trending:values.trending==='on'});if(type==='refund')return submit(`/admin/refunds/${row._id}/status`,values);if(type==='payout')return submit(`/admin/payouts/${row._id}/status`,values);if(type==='new-coupons'){['discountValue','minimumOrder','maximumDiscount','usageLimit','perUserLimit'].forEach(k=>{if(values[k])values[k]=Number(values[k]);else delete values[k];});return submit('/coupons',values,'post');}if(type==='new-venues'){values.capacity=Number(values.capacity);values.amenities=[];return submit('/venues',values,'post');}if(type==='new-resources')values.published=values.published==='on';return submit(`/admin/${type.slice(4)}`,values,'post');}}>
- {type==='user'&&<p>{row.isActive?'Disable':'Enable'} {row.name} ({row.email})? Existing sessions will be revoked.</p>}
- {['organizer','event','refund','payout'].includes(type)&&<><Field label="Decision"><select name="status">{(type==='organizer'?['APPROVED','REJECTED','SUSPENDED']:type==='event'?row.status==='PENDING_REVIEW'?['PUBLISHED','REJECTED']:['CANCELLED']:type==='refund'?['APPROVED','REJECTED']:['PROCESSING','REJECTED','COMPLETED']).map(s=><option key={s}>{s}</option>)}</select></Field><Field label="Reason / notes"><textarea name={['refund','payout'].includes(type)?'notes':'reason'} required/></Field></>}
- {type==='payout'&&<Field label="RazorpayX payout ID" hint={`To mark completed, the provider payout must have notes.eventraPayout = ${row._id} and matching INR amount.`}><input name="referenceId" placeholder="pout_…"/></Field>}
- {type==='curation'&&<><label className="check"><input type="checkbox" name="featured" defaultChecked={row.featured}/>Featured</label><label className="check"><input type="checkbox" name="trending" defaultChecked={row.trending}/>Trending</label></>}
- {(fields[type]||[]).map(([name,label,inputType])=><Field key={name} label={label}><input name={name} type={inputType||'text'} required={!['description','maximumDiscount'].includes(name)} min={inputType==='number'?0:undefined} step={inputType==='number'?'0.01':undefined}/></Field>)}
- {type==='new-coupons'&&<Field label="Discount type"><select name="discountType"><option value="PERCENTAGE">Percentage</option><option value="FIXED">Fixed amount (₹)</option></select></Field>}
- {type==='new-resources'&&<><Field label="Article content"><textarea name="content" minLength={100} required rows={12}/></Field><label className="check"><input type="checkbox" name="published"/>Publish article</label></>}
- <Button busy={busy}>Confirm</Button></form></Modal>;
+const resourceLabels: Record<string, string> = {
+  users: "User accounts",
+  organizers: "Organizer applications",
+  events: "Event management",
+  categories: "Event categories",
+  venues: "Venue directory",
+  bookings: "Bookings",
+  orders: "Orders",
+  payments: "Payment ledger",
+  refunds: "Refund requests",
+  coupons: "Discount codes",
+  reviews: "Attendee reviews",
+  payouts: "Organizer payouts",
+  notifications: "Notification history",
+  "audit-logs": "Audit trail",
+  resources: "Journal articles",
+  attendees: "Attendee list",
+};
+export function ManagementPage({
+  resource,
+  admin = false,
+}: {
+  resource: string;
+  admin?: boolean;
+}) {
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("");
+  const [notice, setNotice] = useState("");
+  const [action, setAction] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const { data, isLoading, error } = useData(
+    `/${admin ? "admin" : "organizers"}/${resource}`,
+    { page, q: q || undefined, status: status || undefined },
+  );
+  const rows = admin ? data?.items : data?.[resource];
+  const mutate = async (path: string, payload: any, method = "put") => {
+    setBusy(true);
+    try {
+      const res = await api.request({ url: path, method, data: payload });
+      setNotice(res.data.message || "Saved");
+      setAction(null);
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setNotice(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const operations = (row: any) => {
+    const buttons = [];
+    if (admin && resource === "users" && row.role !== "ADMIN")
+      buttons.push(
+        <Button
+          key="status"
+          variant="secondary"
+          onClick={() => setAction({ type: "user", row })}
+        >
+          {row.isActive ? "Disable" : "Enable"}
+        </Button>,
+      );
+    if (admin && resource === "organizers")
+      buttons.push(
+        <Button
+          key="review"
+          variant="secondary"
+          onClick={() => setAction({ type: "organizer", row })}
+        >
+          Review application
+        </Button>,
+      );
+    if (resource === "events") {
+      buttons.push(
+        <Link
+          className="btn secondary"
+          key="preview"
+          to={
+            admin
+              ? `/admin/events/${row._id}/preview`
+              : `/organizer/events/${row._id}/edit`
+          }
+        >
+          {admin ? "Preview" : "Edit / preview"}
+        </Link>,
+      );
+      if (admin) {
+        buttons.push(
+          <Button
+            key="moderate"
+            variant="secondary"
+            onClick={() => setAction({ type: "event", row })}
+          >
+            Moderate
+          </Button>,
+        );
+        buttons.push(
+          <Button
+            key="curate"
+            variant="secondary"
+            onClick={() => setAction({ type: "curation", row })}
+          >
+            Feature / trend
+          </Button>,
+        );
+      } else {
+        buttons.push(
+          <Link
+            key="scan"
+            className="btn secondary"
+            to={`/organizer/check-in?event=${row._id}`}
+          >
+            Check-in
+          </Link>,
+        );
+        if (["DRAFT", "REJECTED"].includes(row.status))
+          buttons.push(
+            <Button
+              key="submit"
+              variant="secondary"
+              onClick={() => mutate(`/events/${row._id}/submit`, {}, "post")}
+            >
+              Submit for review
+            </Button>,
+          );
+      }
+    }
+    if (resource === "coupons")
+      buttons.push(
+        <Button
+          key="coupon"
+          variant="secondary"
+          onClick={() =>
+            mutate(`/coupons/${row._id}`, { isActive: !row.isActive })
+          }
+        >
+          {row.isActive ? "Deactivate" : "Activate"}
+        </Button>,
+      );
+    if (admin && resource === "categories")
+      buttons.push(
+        <Button
+          key="category"
+          variant="secondary"
+          onClick={() =>
+            mutate(`/admin/categories/${row._id}`, { isActive: !row.isActive })
+          }
+        >
+          {row.isActive ? "Hide" : "Show"}
+        </Button>,
+      );
+    if (admin && resource === "reviews")
+      buttons.push(
+        <Button
+          key="review"
+          variant="secondary"
+          onClick={() =>
+            mutate(`/admin/reviews/${row._id}/moderate`, {
+              isVerified: !row.isVerified,
+            })
+          }
+        >
+          {row.isVerified ? "Hide review" : "Restore review"}
+        </Button>,
+      );
+    if (admin && resource === "refunds") {
+      if (row.status === "REQUESTED")
+        buttons.push(
+          <Button
+            key="review"
+            variant="secondary"
+            onClick={() => setAction({ type: "refund", row })}
+          >
+            Review request
+          </Button>,
+        );
+      if (row.status === "APPROVED")
+        buttons.push(
+          <Button
+            key="process"
+            variant="secondary"
+            onClick={() =>
+              mutate(`/admin/refunds/${row._id}/process`, {}, "post")
+            }
+          >
+            Process / reconcile
+          </Button>,
+        );
+    }
+    if (
+      admin &&
+      resource === "payouts" &&
+      ["REQUESTED", "PROCESSING"].includes(row.status)
+    )
+      buttons.push(
+        <Button
+          key="payout"
+          variant="secondary"
+          onClick={() => setAction({ type: "payout", row })}
+        >
+          Review / reconcile
+        </Button>,
+      );
+    return <div className="row-actions">{buttons}</div>;
+  };
+  const columns: Record<string, any[]> = {
+    users: [
+      {
+        label: "Account",
+        render: (r: any) => (
+          <>
+            <strong>{r.name}</strong>
+            <small>{r.email}</small>
+          </>
+        ),
+      },
+      { label: "Role", render: (r: any) => r.role },
+      {
+        label: "Status",
+        render: (r: any) => <Badge>{r.isActive ? "Active" : "Disabled"}</Badge>,
+      },
+    ],
+    organizers: [
+      {
+        label: "Organization",
+        render: (r: any) => (
+          <>
+            <strong>{r.organizationName}</strong>
+            <small>{r.user?.email}</small>
+            <p>{r.bio}</p>
+          </>
+        ),
+      },
+      { label: "Status", render: (r: any) => <Badge>{r.status}</Badge> },
+    ],
+    events: [
+      {
+        label: "Event",
+        render: (r: any) => (
+          <>
+            <strong>{r.title}</strong>
+            <small>
+              {r.city} · {date(r.startDate)}
+            </small>
+            {r.moderationReason && (
+              <small>Moderation: {r.moderationReason}</small>
+            )}
+          </>
+        ),
+      },
+      { label: "Status", render: (r: any) => <Badge>{r.status}</Badge> },
+      {
+        label: "Tickets",
+        render: (r: any) => `${r.soldTickets}/${r.totalTickets}`,
+      },
+    ],
+    categories: [
+      { label: "Category", render: (r: any) => r.name },
+      { label: "Description", render: (r: any) => r.description },
+      { label: "Visible", render: (r: any) => (r.isActive ? "Yes" : "No") },
+    ],
+    venues: [
+      {
+        label: "Venue",
+        render: (r: any) => <Link to={`/venues/${r.slug}`}>{r.name}</Link>,
+      },
+      { label: "Location", render: (r: any) => `${r.address}, ${r.city}` },
+      { label: "Capacity", render: (r: any) => r.capacity },
+    ],
+    bookings: [
+      {
+        label: "Booking",
+        render: (r: any) => (
+          <>
+            <strong>{r.bookingId}</strong>
+            <small>{r.event?.title}</small>
+          </>
+        ),
+      },
+      {
+        label: "Attendee",
+        render: (r: any) => (
+          <>
+            {r.attendeeName}
+            <small>{r.attendeeEmail}</small>
+          </>
+        ),
+      },
+      { label: "Total", render: (r: any) => money(r.total) },
+      {
+        label: "Status",
+        render: (r: any) => (
+          <>
+            {r.status}
+            <small>{r.paymentStatus}</small>
+          </>
+        ),
+      },
+    ],
+    orders: [
+      {
+        label: "Order",
+        render: (r: any) => (
+          <>
+            <strong>{r.orderNumber}</strong>
+            <small>{r.event?.title}</small>
+          </>
+        ),
+      },
+      { label: "Total", render: (r: any) => money(r.finalAmount) },
+      {
+        label: "Status",
+        render: (r: any) => (
+          <>
+            {r.bookingStatus}
+            <small>{r.paymentStatus}</small>
+          </>
+        ),
+      },
+    ],
+    payments: [
+      {
+        label: "Payment",
+        render: (r: any) => (
+          <>
+            <code>{r.razorpayPaymentId}</code>
+            <small>{r.booking?.bookingId}</small>
+          </>
+        ),
+      },
+      { label: "Amount", render: (r: any) => money(r.amount) },
+      { label: "Status", render: (r: any) => r.status },
+    ],
+    refunds: [
+      { label: "Booking", render: (r: any) => r.booking?.bookingId },
+      { label: "Reason", render: (r: any) => r.reason },
+      { label: "Amount", render: (r: any) => money(r.amount) },
+      { label: "Status", render: (r: any) => r.status },
+    ],
+    coupons: [
+      {
+        label: "Coupon",
+        render: (r: any) => (
+          <>
+            <strong>{r.code}</strong>
+            <small>{r.name}</small>
+          </>
+        ),
+      },
+      {
+        label: "Discount",
+        render: (r: any) =>
+          r.discountType === "PERCENTAGE"
+            ? `${r.discountValue}%`
+            : money(r.discountValue),
+      },
+      {
+        label: "Usage / expiry",
+        render: (r: any) => (
+          <>
+            {r.usedCount}/{r.usageLimit || "Unlimited"}
+            <small>{date(r.expiryDate)}</small>
+          </>
+        ),
+      },
+      {
+        label: "Status",
+        render: (r: any) => (r.isActive ? "Active" : "Inactive"),
+      },
+    ],
+    reviews: [
+      { label: "Event", render: (r: any) => r.event?.title },
+      {
+        label: "Review",
+        render: (r: any) => (
+          <>
+            <strong>{r.title}</strong>
+            <p>{r.content}</p>
+          </>
+        ),
+      },
+      { label: "Rating", render: (r: any) => `${r.rating}/5` },
+      {
+        label: "Visibility",
+        render: (r: any) => (r.isVerified ? "Published" : "Hidden"),
+      },
+    ],
+    payouts: [
+      { label: "Organizer", render: (r: any) => r.organizer?.name },
+      { label: "Amount", render: (r: any) => money(r.amount) },
+      { label: "Status", render: (r: any) => r.status },
+      {
+        label: "Provider reference",
+        render: (r: any) => r.referenceId || "Not processed",
+      },
+    ],
+    notifications: [
+      {
+        label: "Notification",
+        render: (r: any) => (
+          <>
+            <strong>{r.title}</strong>
+            <p>{r.message}</p>
+          </>
+        ),
+      },
+      { label: "Type", render: (r: any) => r.type },
+      { label: "Status", render: (r: any) => (r.read ? "Read" : "Unread") },
+    ],
+    "audit-logs": [
+      { label: "Action", render: (r: any) => r.action },
+      { label: "Actor", render: (r: any) => r.actorEmail },
+      {
+        label: "Entity",
+        render: (r: any) => (
+          <>
+            {r.entity}
+            <small>{r.entityId}</small>
+          </>
+        ),
+      },
+      { label: "When", render: (r: any) => date(r.createdAt) },
+    ],
+    resources: [
+      {
+        label: "Article",
+        render: (r: any) => (
+          <Link to={`/resources/blog/${r.slug}`}>{r.title}</Link>
+        ),
+      },
+      { label: "Author", render: (r: any) => r.author },
+      {
+        label: "Status",
+        render: (r: any) => (r.published ? "Published" : "Draft"),
+      },
+    ],
+    attendees: [
+      {
+        label: "Attendee",
+        render: (r: any) => (
+          <>
+            <strong>{r.attendeeName}</strong>
+            <small>{r.attendeeEmail}</small>
+          </>
+        ),
+      },
+      {
+        label: "Event / tier",
+        render: (r: any) => (
+          <>
+            {r.event?.title}
+            <small>{r.ticketType?.name}</small>
+          </>
+        ),
+      },
+      { label: "Ticket", render: (r: any) => <code>{r.ticketNumber}</code> },
+      { label: "Status", render: (r: any) => r.status },
+    ],
+  };
+  const create =
+    ["coupons", "venues", "categories", "resources", "notifications"].includes(
+      resource,
+    ) &&
+    (admin || resource === "coupons");
+  return (
+    <>
+      <PageTitle
+        eyebrow={admin ? "Administration" : "Organizer workspace"}
+        title={`${resourceLabels[resource]}.`}
+        action={
+          resource === "events" && !admin ? (
+            <Link className="btn primary" to="/organizer/events/create">
+              Create event
+            </Link>
+          ) : create ? (
+            <Button onClick={() => setAction({ type: `new-${resource}` })}>
+              Create{" "}
+              {resource === "resources"
+                ? "article"
+                : resource.replace(/s$/, "")}
+            </Button>
+          ) : undefined
+        }
+      />
+      {notice && <Notice>{notice}</Notice>}
+      <div className="results-toolbar">
+        {admin &&
+          [
+            "users",
+            "events",
+            "organizers",
+            "categories",
+            "venues",
+            "bookings",
+            "coupons",
+          ].includes(resource) && (
+            <label>
+              Search
+              <input
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search records"
+              />
+            </label>
+          )}
+        {["events", "refunds", "payouts"].includes(resource) && admin && (
+          <label>
+            Status
+            <select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">All</option>
+              {(resource === "events"
+                ? [
+                    "DRAFT",
+                    "PENDING_REVIEW",
+                    "PUBLISHED",
+                    "REJECTED",
+                    "CANCELLED",
+                  ]
+                : resource === "refunds"
+                  ? ["REQUESTED", "APPROVED", "PROCESSED", "REJECTED"]
+                  : ["REQUESTED", "PROCESSING", "COMPLETED", "REJECTED"]
+              ).map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : !rows?.length ? (
+        <ResourceEmpty resource={resource} admin={admin} />
+      ) : (
+        <Table
+          rows={rows || []}
+          columns={[
+            ...(columns[resource] || []),
+            { label: "Actions", render: operations },
+          ]}
+        />
+      )}
+      <Pagination value={data?.pagination} onChange={setPage} />
+      {action && (
+        <ActionForm
+          action={action}
+          notice={notice}
+          busy={busy}
+          onClose={() => setAction(null)}
+          submit={mutate}
+        />
+      )}
+    </>
+  );
 }
-export function PlatformSettings() {const {data,isLoading,error}=useData('/admin/settings');const [notice,setNotice]=useState('');return <><PageTitle eyebrow="Platform configuration" title="Settings."/>{notice&&<Notice>{notice}</Notice>}{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:data&&<><div className="stats-grid">{Object.entries(data.integrations).map(([key,value])=><div className="stat" key={key}><span>{key}</span><Badge>{value?'Configured':'Requires operator configuration'}</Badge></div>)}</div><form className="panel form-stack" onSubmit={async e=>{e.preventDefault();const form=new FormData(e.currentTarget);try{await api.put('/admin/settings',{taxPercent:Number(form.get('taxPercent')),platformFeePercent:Number(form.get('platformFeePercent'))});setNotice('Pricing updated for future checkouts');await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}}}><h2>Checkout pricing</h2><Field label="Tax percent"><input name="taxPercent" type="number" min={0} max={30} step="0.01" defaultValue={data.settings.find((s:any)=>s.key==='pricing')?.value.taxPercent??18}/></Field><Field label="Platform fee percent"><input name="platformFeePercent" type="number" min={0} max={20} step="0.01" defaultValue={data.settings.find((s:any)=>s.key==='pricing')?.value.platformFeePercent??2}/></Field><Button>Save pricing</Button></form></>}</>;}
-export function OrganizerProfilePage() {const {data,isLoading,error}=useData('/organizers/profile');const [notice,setNotice]=useState('');return <><PageTitle eyebrow="Organizer onboarding" title="Introduce your organization."/>{notice&&<Notice>{notice}</Notice>}{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:<form key={data?.profile?._id} className="panel form-stack" onSubmit={async e=>{e.preventDefault();const fields:any=Object.fromEntries(new FormData(e.currentTarget));const payoutDetails={accountHolderName:fields.accountHolderName,accountNumber:fields.accountNumber,ifscCode:fields.ifscCode,bankName:fields.bankName};['accountHolderName','accountNumber','ifscCode','bankName'].forEach(k=>delete fields[k]);try{await api.put('/organizers/profile',{...fields,payoutDetails});setNotice('Profile saved. Approval status is managed by administrators.');await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}}}><Badge>{data?.profile?.status||'PENDING'}</Badge>{[['organizationName','Organization name'],['bio','About your organization'],['website','Website'],['logo','Logo URL']].map(([key,label])=><Field key={key} label={label}><input name={key} defaultValue={data?.profile?.[key]||''} required={key==='organizationName'}/></Field>)}<h2>Payout details</h2>{[['accountHolderName','Account holder'],['accountNumber','Account number'],['ifscCode','IFSC'],['bankName','Bank name']].map(([key,label])=><Field key={key} label={label}><input name={key} defaultValue={data?.profile?.payoutDetails?.[key]||''}/></Field>)}<Button>Save organization</Button></form>}</>;}
-export function PayoutsPage() {const [page,setPage]=useState(1);const {data,isLoading,error}=useData('/organizers/payouts',{page});const [notice,setNotice]=useState('');return <><PageTitle eyebrow="Settlements" title="Your payouts.">Funds become available seven days after the event ends, excluding refunds and existing payout requests.</PageTitle>{notice&&<Notice>{notice}</Notice>}{isLoading?<Skeleton/>:error?<Notice error>{message(error)}</Notice>:data&&<><div className="stats-grid">{Object.entries(data.balance).map(([key,value])=><div className="stat" key={key}><span>{key}</span><strong>{money(Number(value))}</strong></div>)}</div><form className="panel input-action" onSubmit={async e=>{e.preventDefault();const amount=Number(new FormData(e.currentTarget).get('amount'));try{await api.post('/organizers/payouts/request',{amount});setNotice('Payout requested');await queryClient.invalidateQueries();}catch(err){setNotice(message(err));}}}><Field label="Request amount (₹)"><input name="amount" type="number" min="1" step="0.01" max={data.balance.available} required/></Field><Button disabled={data.balance.available<1}>Request payout</Button></form><Table rows={data.payouts} columns={[{label:'Requested',render:r=>date(r.createdAt)},{label:'Amount',render:r=>money(r.amount)},{label:'Status',render:r=><Badge>{r.status}</Badge>},{label:'Reference',render:r=>r.referenceId||'Awaiting transfer'},{label:'Notes',render:r=>r.notes}]}/><Pagination value={data.pagination} onChange={setPage}/></>}</>;}
+function ActionForm({
+  action,
+  notice,
+  busy,
+  onClose,
+  submit,
+}: {
+  action: any;
+  notice: string;
+  busy: boolean;
+  onClose: () => void;
+  submit: (path: string, payload: any, method?: string) => Promise<void>;
+}) {
+  const type = action.type;
+  const row = action.row;
+  const fields: Record<string, Array<[string, string, string?]>> = {
+    "new-categories": [
+      ["name", "Name"],
+      ["description", "Description"],
+    ],
+    "new-venues": [
+      ["name", "Venue name"],
+      ["description", "Description"],
+      ["address", "Address"],
+      ["city", "City"],
+      ["state", "State"],
+      ["capacity", "Capacity", "number"],
+      ["image", "Image URL", "url"],
+    ],
+    "new-coupons": [
+      ["code", "Coupon code"],
+      ["name", "Name"],
+      ["discountValue", "Discount value", "number"],
+      ["minimumOrder", "Minimum order (₹)", "number"],
+      ["maximumDiscount", "Maximum discount (₹)", "number"],
+      ["usageLimit", "Total usage limit", "number"],
+      ["perUserLimit", "Per-customer limit", "number"],
+      ["expiryDate", "Expiry", "datetime-local"],
+    ],
+    "new-notifications": [
+      ["user", "Recipient user ID"],
+      ["title", "Title"],
+      ["message", "Message"],
+    ],
+    "new-resources": [
+      ["title", "Title"],
+      ["excerpt", "Excerpt"],
+      ["author", "Author"],
+      ["category", "Category"],
+    ],
+  };
+  return (
+    <Modal
+      title={type.startsWith("new-") ? "Create record" : "Review and confirm"}
+      onClose={onClose}
+    >
+      {notice && <Notice>{notice}</Notice>}
+      <form
+        className="form-stack"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const values: any = Object.fromEntries(new FormData(e.currentTarget));
+          if (type === "user")
+            return submit(`/admin/users/${row._id}/status`, {
+              isActive: !row.isActive,
+            });
+          if (type === "organizer")
+            return submit(`/admin/organizers/${row._id}/status`, values);
+          if (type === "event")
+            return submit(`/admin/events/${row._id}/moderate`, values);
+          if (type === "curation")
+            return submit(`/admin/events/${row._id}/curation`, {
+              featured: values.featured === "on",
+              trending: values.trending === "on",
+            });
+          if (type === "refund")
+            return submit(`/admin/refunds/${row._id}/status`, values);
+          if (type === "payout")
+            return submit(`/admin/payouts/${row._id}/status`, values);
+          if (type === "new-coupons") {
+            [
+              "discountValue",
+              "minimumOrder",
+              "maximumDiscount",
+              "usageLimit",
+              "perUserLimit",
+            ].forEach((k) => {
+              if (values[k]) values[k] = Number(values[k]);
+              else delete values[k];
+            });
+            return submit("/coupons", values, "post");
+          }
+          if (type === "new-venues") {
+            values.capacity = Number(values.capacity);
+            values.amenities = [];
+            return submit("/venues", values, "post");
+          }
+          if (type === "new-resources")
+            values.published = values.published === "on";
+          return submit(`/admin/${type.slice(4)}`, values, "post");
+        }}
+      >
+        {type === "user" && (
+          <p>
+            {row.isActive ? "Disable" : "Enable"} {row.name} ({row.email})?
+            Existing sessions will be revoked.
+          </p>
+        )}
+        {["organizer", "event", "refund", "payout"].includes(type) && (
+          <>
+            <Field label="Decision">
+              <select name="status">
+                {(type === "organizer"
+                  ? ["APPROVED", "REJECTED", "SUSPENDED"]
+                  : type === "event"
+                    ? row.status === "PENDING_REVIEW"
+                      ? ["PUBLISHED", "REJECTED"]
+                      : ["CANCELLED"]
+                    : type === "refund"
+                      ? ["APPROVED", "REJECTED"]
+                      : ["PROCESSING", "REJECTED", "COMPLETED"]
+                ).map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Reason / notes">
+              <textarea
+                name={["refund", "payout"].includes(type) ? "notes" : "reason"}
+                required
+              />
+            </Field>
+          </>
+        )}
+        {type === "payout" && (
+          <Field
+            label="RazorpayX payout ID"
+            hint={`To mark completed, the provider payout must have notes.eventraPayout = ${row._id} and matching INR amount.`}
+          >
+            <input name="referenceId" placeholder="pout_…" />
+          </Field>
+        )}
+        {type === "curation" && (
+          <>
+            <label className="check">
+              <input
+                type="checkbox"
+                name="featured"
+                defaultChecked={row.featured}
+              />
+              Featured
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                name="trending"
+                defaultChecked={row.trending}
+              />
+              Trending
+            </label>
+          </>
+        )}
+        {(fields[type] || []).map(([name, label, inputType]) => (
+          <Field key={name} label={label}>
+            <input
+              name={name}
+              type={inputType || "text"}
+              required={!["description", "maximumDiscount"].includes(name)}
+              min={inputType === "number" ? 0 : undefined}
+              step={inputType === "number" ? "0.01" : undefined}
+            />
+          </Field>
+        ))}
+        {type === "new-coupons" && (
+          <Field label="Discount type">
+            <select name="discountType">
+              <option value="PERCENTAGE">Percentage</option>
+              <option value="FIXED">Fixed amount (₹)</option>
+            </select>
+          </Field>
+        )}
+        {type === "new-resources" && (
+          <>
+            <Field label="Article content">
+              <textarea name="content" minLength={100} required rows={12} />
+            </Field>
+            <label className="check">
+              <input type="checkbox" name="published" />
+              Publish article
+            </label>
+          </>
+        )}
+        <Button busy={busy}>Confirm</Button>
+      </form>
+    </Modal>
+  );
+}
+export function PlatformSettings() {
+  const { data, isLoading, error } = useData("/admin/settings");
+  const [notice, setNotice] = useState("");
+  return (
+    <>
+      <PageTitle eyebrow="Platform configuration" title="Settings." />
+      {notice && <Notice>{notice}</Notice>}
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : (
+        data && (
+          <>
+            <div className="stats-grid">
+              {Object.entries(data.integrations).map(([key, value]) => (
+                <div className="stat" key={key}>
+                  <span>{key}</span>
+                  <Badge>
+                    {value ? "Configured" : "Requires operator configuration"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            <form
+              className="panel form-stack"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = new FormData(e.currentTarget);
+                try {
+                  await api.put("/admin/settings", {
+                    taxPercent: Number(form.get("taxPercent")),
+                    platformFeePercent: Number(form.get("platformFeePercent")),
+                  });
+                  setNotice("Pricing updated for future checkouts");
+                  await queryClient.invalidateQueries();
+                } catch (err) {
+                  setNotice(message(err));
+                }
+              }}
+            >
+              <h2>Checkout pricing</h2>
+              <Field label="Tax percent">
+                <input
+                  name="taxPercent"
+                  type="number"
+                  min={0}
+                  max={30}
+                  step="0.01"
+                  defaultValue={
+                    data.settings.find((s: any) => s.key === "pricing")?.value
+                      .taxPercent ?? 18
+                  }
+                />
+              </Field>
+              <Field label="Platform fee percent">
+                <input
+                  name="platformFeePercent"
+                  type="number"
+                  min={0}
+                  max={20}
+                  step="0.01"
+                  defaultValue={
+                    data.settings.find((s: any) => s.key === "pricing")?.value
+                      .platformFeePercent ?? 2
+                  }
+                />
+              </Field>
+              <Button>Save pricing</Button>
+            </form>
+          </>
+        )
+      )}
+    </>
+  );
+}
+export function OrganizerProfilePage() {
+  const { data, isLoading, error } = useData("/organizers/profile");
+  const [notice, setNotice] = useState("");
+  return (
+    <>
+      <PageTitle
+        eyebrow="Organizer onboarding"
+        title="Introduce your organization."
+      />
+      {notice && <Notice>{notice}</Notice>}
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : (
+        <form
+          key={data?.profile?._id}
+          className="panel form-stack"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const fields: any = Object.fromEntries(
+              new FormData(e.currentTarget),
+            );
+            const payoutDetails = {
+              accountHolderName: fields.accountHolderName,
+              accountNumber: fields.accountNumber,
+              ifscCode: fields.ifscCode,
+              bankName: fields.bankName,
+            };
+            [
+              "accountHolderName",
+              "accountNumber",
+              "ifscCode",
+              "bankName",
+            ].forEach((k) => delete fields[k]);
+            try {
+              await api.put("/organizers/profile", {
+                ...fields,
+                payoutDetails,
+              });
+              setNotice(
+                "Profile saved. Approval status is managed by administrators.",
+              );
+              await queryClient.invalidateQueries();
+            } catch (err) {
+              setNotice(message(err));
+            }
+          }}
+        >
+          <Badge>{data?.profile?.status || "PENDING"}</Badge>
+          {[
+            ["organizationName", "Organization name"],
+            ["bio", "About your organization"],
+            ["website", "Website"],
+            ["logo", "Logo URL"],
+          ].map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                name={key}
+                defaultValue={data?.profile?.[key] || ""}
+                required={key === "organizationName"}
+              />
+            </Field>
+          ))}
+          <h2>Payout details</h2>
+          {[
+            ["accountHolderName", "Account holder"],
+            ["accountNumber", "Account number"],
+            ["ifscCode", "IFSC"],
+            ["bankName", "Bank name"],
+          ].map(([key, label]) => (
+            <Field key={key} label={label}>
+              <input
+                name={key}
+                defaultValue={data?.profile?.payoutDetails?.[key] || ""}
+              />
+            </Field>
+          ))}
+          <Button>Save organization</Button>
+        </form>
+      )}
+    </>
+  );
+}
+export function PayoutsPage() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, error } = useData("/organizers/payouts", { page });
+  const [notice, setNotice] = useState("");
+  return (
+    <>
+      <PageTitle eyebrow="Settlements" title="Your payouts.">
+        Funds become available seven days after the event ends, excluding
+        refunds and existing payout requests.
+      </PageTitle>
+      {notice && <Notice>{notice}</Notice>}
+      {isLoading ? (
+        <Skeleton />
+      ) : error ? (
+        <Notice error>{message(error)}</Notice>
+      ) : (
+        data && (
+          <>
+            <div className="stats-grid">
+              {Object.entries(data.balance).map(([key, value]) => (
+                <div className="stat" key={key}>
+                  <span>{key}</span>
+                  <strong>{money(Number(value))}</strong>
+                </div>
+              ))}
+            </div>
+            <form
+              className="panel input-action"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const amount = Number(
+                  new FormData(e.currentTarget).get("amount"),
+                );
+                try {
+                  await api.post("/organizers/payouts/request", { amount });
+                  setNotice("Payout requested");
+                  await queryClient.invalidateQueries();
+                } catch (err) {
+                  setNotice(message(err));
+                }
+              }}
+            >
+              <Field label="Request amount (₹)">
+                <input
+                  name="amount"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  max={data.balance.available}
+                  required
+                />
+              </Field>
+              <Button disabled={data.balance.available < 1}>
+                Request payout
+              </Button>
+            </form>
+            <Table
+              rows={data.payouts}
+              columns={[
+                { label: "Requested", render: (r) => date(r.createdAt) },
+                { label: "Amount", render: (r) => money(r.amount) },
+                { label: "Status", render: (r) => <Badge>{r.status}</Badge> },
+                {
+                  label: "Reference",
+                  render: (r) => r.referenceId || "Awaiting transfer",
+                },
+                { label: "Notes", render: (r) => r.notes },
+              ]}
+            />
+            <Pagination value={data.pagination} onChange={setPage} />
+          </>
+        )
+      )}
+    </>
+  );
+}

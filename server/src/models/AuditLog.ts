@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types } from "mongoose";
 
 export interface IAuditLog extends Document {
   actor?: Types.ObjectId;
@@ -13,15 +13,20 @@ export interface IAuditLog extends Document {
 
 const AuditLogSchema = new Schema<IAuditLog>(
   {
-    actor: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
-    actorEmail: { type: String, default: 'system' },
+    actor: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    actorEmail: { type: String, default: "system" },
     action: { type: String, required: true, index: true },
     entity: { type: String, required: true, index: true },
     entityId: { type: String, default: null },
     metadata: { type: Schema.Types.Mixed, default: {} },
-    ipAddress: { type: String, default: '' },
+    ipAddress: { type: String, default: "" },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-export const AuditLog = model<IAuditLog>('AuditLog', AuditLogSchema);
+export const AuditLog = model<IAuditLog>("AuditLog", AuditLogSchema);

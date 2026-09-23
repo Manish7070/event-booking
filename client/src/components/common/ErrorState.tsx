@@ -1,5 +1,5 @@
-import React from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import React from "react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface ErrorStateProps {
   title?: string;
@@ -8,8 +8,8 @@ interface ErrorStateProps {
 }
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
-  title = 'Something went wrong',
-  message = 'An error occurred while loading data. Please try again.',
+  title = "Something went wrong",
+  message = "An error occurred while loading data. Please try again.",
   onRetry,
 }) => {
   return (

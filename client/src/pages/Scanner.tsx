@@ -1,8 +1,111 @@
-import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser';
-import { useData } from '../hooks/useData.js';
-import { api } from '../api/axios.js';
-import { Button, Field, Notice, PageTitle, message } from '../components/ui.js';
-export function ScannerPage(){const [params]=useSearchParams();const [eventId,setEventId]=useState(params.get('event')||'');const [input,setInput]=useState('');const [active,setActive]=useState(false);const [busy,setBusy]=useState(false);const [result,setResult]=useState<any>(null);const video=useRef<HTMLVideoElement>(null);const controls=useRef<IScannerControls>();const locked=useRef(false);const events=useData('/organizers/events',{limit:100});const verify=async(value:string)=>{if(locked.current||!eventId)return;locked.current=true;setBusy(true);try{const res=await api.post('/checkin/scan-qr',{eventId,ticketId:value});setResult({success:true,message:`${res.data.data.attendeeName} · ${res.data.data.ticketType} — entry confirmed`});setInput('');}catch(err){setResult({success:false,message:message(err)});}finally{setBusy(false);controls.current?.stop();setActive(false);locked.current=false;}};
-useEffect(()=>{if(!active||!video.current)return;let disposed=false;const reader=new BrowserQRCodeReader();reader.decodeFromVideoDevice(undefined,video.current,(result)=>{if(result&&!disposed)void verify(result.getText());}).then(c=>{if(disposed)c.stop();else controls.current=c;}).catch(err=>{setResult({success:false,message:message(err)});setActive(false);});return()=>{disposed=true;controls.current?.stop();};},[active,eventId]);return <><PageTitle eyebrow="At the door" title="Welcome your crowd.">Check-in is available from 12 hours before the event until it ends.</PageTitle><div className="panel scanner"><Field label="Event"><select value={eventId} onChange={e=>{setActive(false);setEventId(e.target.value);}}><option value="">Choose your event</option>{events.data?.events?.map((e:any)=><option key={e._id} value={e._id}>{e.title}</option>)}</select></Field>{active&&<video ref={video} muted playsInline className="camera"/>}<Button disabled={!eventId||busy} onClick={()=>setActive(!active)}>{active?'Stop camera':'Scan with camera'}</Button><form className="form-stack" onSubmit={e=>{e.preventDefault();void verify(input);}}><Field label="Or enter the individual ticket number / QR token"><input value={input} onChange={e=>setInput(e.target.value)} required autoComplete="off"/></Field><Button variant="secondary" disabled={!eventId||!input} busy={busy}>Verify and check in</Button></form>{result&&<Notice error={!result.success}>{result.message}</Notice>}</div></>;}
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
+import { useData } from "../hooks/useData.js";
+import { api } from "../api/axios.js";
+import { Button, Field, Notice, PageTitle, message } from "../components/ui.js";
+export function ScannerPage() {
+  const [params] = useSearchParams();
+  const [eventId, setEventId] = useState(params.get("event") || "");
+  const [input, setInput] = useState("");
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<any>(null);
+  const video = useRef<HTMLVideoElement>(null);
+  const controls = useRef<IScannerControls | null>(null);
+  const locked = useRef(false);
+  const events = useData("/organizers/events", { limit: 100 });
+  const verify = async (value: string) => {
+    if (locked.current || !eventId) return;
+    locked.current = true;
+    setBusy(true);
+    try {
+      const res = await api.post("/checkin/scan-qr", {
+        eventId,
+        ticketId: value,
+      });
+      setResult({
+        success: true,
+        message: `${res.data.data.attendeeName} · ${res.data.data.ticketType} — entry confirmed`,
+      });
+      setInput("");
+    } catch (err) {
+      setResult({ success: false, message: message(err) });
+    } finally {
+      setBusy(false);
+      controls.current?.stop();
+      setActive(false);
+      locked.current = false;
+    }
+  };
+  useEffect(() => {
+    if (!active || !video.current) return;
+    let disposed = false;
+    const reader = new BrowserQRCodeReader();
+    reader
+      .decodeFromVideoDevice(undefined, video.current, (result) => {
+        if (result && !disposed) void verify(result.getText());
+      })
+      .then((c) => {
+        if (disposed) c.stop();
+        else controls.current = c;
+      })
+      .catch((err) => {
+        setResult({ success: false, message: message(err) });
+        setActive(false);
+      });
+    return () => {
+      disposed = true;
+      controls.current?.stop();
+    };
+  }, [active, eventId]);
+  return (
+    <>
+      <PageTitle eyebrow="At the door" title="Welcome your crowd.">
+        Check-in is available from 12 hours before the event until it ends.
+      </PageTitle>
+      <div className="panel scanner">
+        <Field label="Event">
+          <select
+            value={eventId}
+            onChange={(e) => {
+              setActive(false);
+              setEventId(e.target.value);
+            }}
+          >
+            <option value="">Choose your event</option>
+            {events.data?.events?.map((e: any) => (
+              <option key={e._id} value={e._id}>
+                {e.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {active && <video ref={video} muted playsInline className="camera" />}
+        <Button disabled={!eventId || busy} onClick={() => setActive(!active)}>
+          {active ? "Stop camera" : "Scan with camera"}
+        </Button>
+        <form
+          className="form-stack"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void verify(input);
+          }}
+        >
+          <Field label="Or enter the individual ticket number / QR token">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              required
+              autoComplete="off"
+            />
+          </Field>
+          <Button variant="secondary" disabled={!eventId || !input} busy={busy}>
+            Verify and check in
+          </Button>
+        </form>
+        {result && <Notice error={!result.success}>{result.message}</Notice>}
+      </div>
+    </>
+  );
+}

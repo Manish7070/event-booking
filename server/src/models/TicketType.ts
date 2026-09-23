@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types } from "mongoose";
 
 export interface ITicketType extends Document {
   event: Types.ObjectId;
@@ -19,9 +19,14 @@ export interface ITicketType extends Document {
 
 const TicketTypeSchema = new Schema<ITicketType>(
   {
-    event: { type: Schema.Types.ObjectId, ref: 'Event', required: true, index: true },
+    event: {
+      type: Schema.Types.ObjectId,
+      ref: "Event",
+      required: true,
+      index: true,
+    },
     name: { type: String, required: true, trim: true },
-    description: { type: String, default: '' },
+    description: { type: String, default: "" },
     price: { type: Number, required: true, min: 0 },
     totalQuantity: { type: Number, required: true, min: 1 },
     soldQuantity: { type: Number, default: 0, min: 0 },
@@ -32,7 +37,7 @@ const TicketTypeSchema = new Schema<ITicketType>(
     saleEndDate: { type: Date },
     isActive: { type: Boolean, default: true },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-export const TicketType = model<ITicketType>('TicketType', TicketTypeSchema);
+export const TicketType = model<ITicketType>("TicketType", TicketTypeSchema);

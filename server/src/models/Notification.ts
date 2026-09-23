@@ -1,4 +1,4 @@
-import { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Document, Types } from "mongoose";
 
 export interface INotification extends Document {
   user: Types.ObjectId;
@@ -12,14 +12,22 @@ export interface INotification extends Document {
 
 const NotificationSchema = new Schema<INotification>(
   {
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
     type: { type: String, required: true },
     title: { type: String, required: true },
     message: { type: String, required: true },
     data: { type: Schema.Types.Mixed, default: {} },
     read: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-export const Notification = model<INotification>('Notification', NotificationSchema);
+export const Notification = model<INotification>(
+  "Notification",
+  NotificationSchema,
+);

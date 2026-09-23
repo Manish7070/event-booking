@@ -1,2 +1,21 @@
-import { Schema, model } from 'mongoose';
-export const EmailJob = model('EmailJob', new Schema({ key: { type: String, unique: true, required: true }, to: { type: String, required: true }, subject: String, text: String, status: { type: String, enum: ['PENDING', 'SENDING', 'SENT', 'FAILED'], default: 'PENDING' }, attempts: { type: Number, default: 0 }, nextAttempt: { type: Date, default: Date.now }, sentAt: Date }, { timestamps: true }));
+import { Schema, model } from "mongoose";
+export const EmailJob = model(
+  "EmailJob",
+  new Schema(
+    {
+      key: { type: String, unique: true, required: true },
+      to: { type: String, required: true },
+      subject: String,
+      text: String,
+      status: {
+        type: String,
+        enum: ["PENDING", "SENDING", "SENT", "FAILED"],
+        default: "PENDING",
+      },
+      attempts: { type: Number, default: 0 },
+      nextAttempt: { type: Date, default: Date.now },
+      sentAt: Date,
+    },
+    { timestamps: true },
+  ),
+);
